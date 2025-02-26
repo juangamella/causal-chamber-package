@@ -9,7 +9,7 @@
 
 ![The Causal Chambers: (left) the wind tunnel, and (right) the light tunnel with the front panel removed to show its interior.](https://causalchamber.s3.eu-central-1.amazonaws.com/downloadables/the_chambers.jpg)
 
-The `causalchamber` package also provides Python implementations of simulators that model different physical phenomena in the causal chambers. The available simulators are indexed in this page, together with Jupyter notebooks with examples on how to use them. Some of the simulators were developed as part of scientific work; please consider citing the relevant papers if you use the simulators (see [References](#references) below).
+The `causalchamber` [package](https://github.com/juangamella/causal-chamber-package) also provides Python implementations of simulators that model different physical phenomena in the causal chambers. The available simulators are indexed in this page, together with Jupyter notebooks with examples on how to use them. Some of the simulators were developed as part of scientific work; please consider citing the relevant papers if you use the simulators (see [References](#references) below).
 
 The mechanistic models described in [Appendix IV](https://arxiv.org/pdf/2404.11341#page=28&zoom=100,57,65) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x) have been refactored into simulators below, following the same nomenclature of the paper (e.g., ModelA1). For reproducibility, the original (and deprecated!) Python implementations provided in the paper are still available [here](../models).
 
