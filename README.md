@@ -114,6 +114,10 @@ Non backward-compatible changes to the package are reflected by a change to the 
 
 > e.g. *code that uses causalchamber==0.1.2 will run with causalchamber==0.1.3, but may not run with causalchamber==0.2.0.*
 
+## Help & Feedback
+
+If you encounter a bug, need help using the package, or want to leave us some (highly welcome) feedback, please send us an [email](mailto:juan@causalchamber.ai) or leave a [GitHub issue](https://github.com/juangamella/causal-chamber-package/issues).
+
 ## License
 
 The code in this repository is shared under the permissive [MIT license](https://opensource.org/license/mit/). A copy of can be found in [LICENSE.txt](LICENSE.txt).
