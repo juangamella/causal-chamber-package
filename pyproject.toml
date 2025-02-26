@@ -9,7 +9,7 @@ authors = [
   { name="Juan L. Gamella", email="juangamella@gmail.com" },
 ]
 description = "Access the datasets and models from the causal chambers."
-readme = "src/README.md"
+readme = "pypi_README.md"
 requires-python = ">=3.6"
 classifiers = [
     "Programming Language :: Python :: 3",
