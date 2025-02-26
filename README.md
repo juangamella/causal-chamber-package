@@ -74,7 +74,7 @@ The package refreshes its list of available datasets every time it's freshly imp
 
 The package also contains Python implementations of different simulators of chamber phenomena, including the mechanistic models described in [Appendix IV](https://arxiv.org/pdf/2404.11341#page=28&zoom=100,57,65) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x).
 
-> See the [Simulator Repository](causalchamber/simulators/) for the complete documentation and examples.
+> See the [Simulator Index](causalchamber/simulators/) for the complete documentation and examples.
 
 ## Ground truth
 
