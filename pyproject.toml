@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "causalchamber"
+version = "0.1.3"
+authors = [
+  { name="Juan L. Gamella", email="juangamella@gmail.com" },
+]
+description = "Access the datasets and models from the causal chambers."
+readme = "src/README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.18.0",
+    "pandas>=1.2.1",
+    "requests>=2.23.0",
+    "pyyaml>=5.3.1",
+    "Pillow",
+    "tqdm"
+]
+
+[project.optional-dependencies]
+torch = ["torch", "torchvision"]
+
+[project.urls]
+Homepage = "https://causalchamber.ai"
+Repository = "https://github.com/juangamella/causal-chamber-package"
+Issues = "https://github.com/juangamella/causal-chamber-package/issues"
