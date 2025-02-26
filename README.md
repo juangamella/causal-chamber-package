@@ -116,7 +116,7 @@ Non backward-compatible changes to the package are reflected by a change to the 
 
 ## Help & Feedback
 
-If you encounter a bug, need help using the package, or want to leave us some (highly welcome) feedback, please send us an [email](mailto:juan@causalchamber.ai) or leave a [GitHub issue](https://github.com/juangamella/causal-chamber-package/issues).
+If you encounter a bug, need help using the package, or want to leave us some (highly welcome) feedback, please send us an [email](mailto:juan@causalchamber.ai), leave a [GitHub issue](https://github.com/juangamella/causal-chamber-package/issues) or start a new [Discussion](https://github.com/juangamella/causal-chamber-package/discussions).
 
 ## License
 
