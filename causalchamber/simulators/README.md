@@ -108,7 +108,7 @@ If you use the corresponding simulators in your scientific work, please consider
 
 By Juan L. Gamella\*, Simon Bing\* and Jakob Runge (* = equal contribution).
 
-> [PDF](https://rdcu.be/d6kVj)
+> [PDF](https://arxiv.org/pdf/2502.20099)
 
 If you use the corresponding simulators in your scientific work, please consider citing:
 
@@ -117,7 +117,7 @@ If you use the corresponding simulators in your scientific work, please consider
   title     = {Sanity Checking Causal Representation Learning on a Simple Real-World System},
   author    = {Gamella*, Juan L. and Bing*, Simon and Runge, Jakob},
   year      = {2025},
-  journal   = {arXiv preprint arXiv:TODO},
+  journal   = {arXiv preprint arXiv:2502.20099},
   note      = {*equal contribution}
 }
 ```
