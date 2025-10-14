@@ -42,9 +42,9 @@ class _BaseError(Exception):
     message : str
         Human-readable error description
     request_id : str
-        Unique identifier of the request on the chamber server.
+        Unique identifier of the associated request on the chamber server.
     scheduler_id : str
-        Unique identifier of the request on the scheduler.
+        Unique identifier of the associated request on the scheduler.
     """
 
     def __init__(self, code, message, request_id=None, scheduler_id=None):
@@ -58,9 +58,9 @@ class _BaseError(Exception):
         message : str
             Descriptive error message explaining what went wrong
         request_id : str
-            Unique identifier of the request on the chamber server.
+            Unique identifier of the associated request on the chamber server.
         scheduler_id : str
-            Unique identifier of the request on the scheduler.
+            Unique identifier of the associated request on the scheduler.
         """
         super().__init__(message)
         self.message = message
@@ -114,7 +114,9 @@ class LabError(_BaseError):
     failures. These errors typically require intervention from the
     system administrators rather than changes to user code.
 
-    If such errors arise, you can reach out to us at support@causalchamber.ai
+    If such errors arise, you can reach out to us at
+    support@causalchamber.ai, or through any of support channels
+    provided during your onboarding.
 
     Attributes
     ----------
@@ -123,9 +125,10 @@ class LabError(_BaseError):
     message : str
         Human-readable error description
     request_id : str
-        Unique identifier of the request on the chamber server.
+        Unique identifier of the associated request on the chamber server.
     scheduler_id : str
-        Unique identifier of the request on the scheduler.
+        Unique identifier of the associated request on the scheduler.
+
     """
     def __init__(self, code, message, request_id=None, scheduler_id=None):
         # Set a default message if it is not provided
@@ -149,8 +152,8 @@ class UserError(_BaseError):
     message : str
         Human-readable error description with guidance for resolution
     request_id : str
-        Unique identifier of the request on the chamber server.
+        Unique identifier of the associated request on the chamber server.
     scheduler_id : str
-        Unique identifier of the request on the scheduler.
+        Unique identifier of the associated request on the scheduler.
 
     """
