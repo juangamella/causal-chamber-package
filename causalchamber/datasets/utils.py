@@ -1,6 +1,6 @@
 # MIT License
 
-# Copyright (c) 2024 Juan L. Gamella
+# Copyright (c) 2025 Causal Chamber GmbH
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -20,6 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Authors:
+#   - Juan L. Gamella [juan@causalchamber.ai]
 
 """This module contains helper functions, e.g., to download and
 extract .zip files and check their MD5 checksums.
