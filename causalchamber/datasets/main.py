@@ -39,7 +39,7 @@ DIRECTORY_URL = (
     "https://causalchamber.s3.eu-central-1.amazonaws.com/downloadables/directory.yaml"
 )
 
-print(f"\nFetching list of available datasets from {DIRECTORY_URL} ...", end="")
+print(f"\nFetching list of available datasets from\n  {DIRECTORY_URL} ...", end="")
 
 r = requests.get(DIRECTORY_URL)
 if r.status_code != 200:
