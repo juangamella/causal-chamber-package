@@ -74,7 +74,7 @@ The package refreshes its list of available datasets every time it's freshly imp
 
 The package also contains Python implementations of different simulators of chamber phenomena, including the mechanistic models described in [Appendix IV](https://arxiv.org/pdf/2404.11341#page=28&zoom=100,57,65) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x).
 
-> See the [Simulator Repository](causalchamber/simulators/) for the complete documentation and examples.
+> See the [Simulator Index](causalchamber/simulators/) for the complete documentation and examples.
 
 ## Ground truth
 
@@ -116,7 +116,7 @@ Non backward-compatible changes to the package are reflected by a change to the 
 
 ## Help & Feedback
 
-If you encounter a bug, need help using the package, or want to leave us some (highly welcome) feedback, please send us an [email](mailto:juan@causalchamber.ai) or leave a [GitHub issue](https://github.com/juangamella/causal-chamber-package/issues).
+If you encounter a bug, need help using the package, or want to leave us some (highly welcome) feedback, please send us an [email](mailto:juan@causalchamber.ai), leave a [GitHub issue](https://github.com/juangamella/causal-chamber-package/issues) or start a new [Discussion](https://github.com/juangamella/causal-chamber-package/discussions).
 
 ## License
 
