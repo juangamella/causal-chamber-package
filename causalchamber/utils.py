@@ -23,7 +23,7 @@
 
 # Authors:
 #   - Juan L. Gamella [juan@causalchamber.ai]
-x
+
 """
 Wildcard module for utility functions.
 """
