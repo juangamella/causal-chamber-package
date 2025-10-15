@@ -32,6 +32,8 @@ test-downloads:
 doctests:
 	PYTHONPATH=./ python causalchamber/datasets/main.py
 	PYTHONPATH=./ python causalchamber/ground_truth/main.py
+	PYTHONPATH=./ python causalchamber/lab/api.py
+	PYTHONPATH=./ python causalchamber/lab/chamber.py
 
 
 # Run the examples from the README
@@ -44,5 +46,24 @@ simulator-tutorials:
 	cd causalchamber/simulators/tutorials/; \
 	make test-scripts; \
     )
+
+# Copyright (C) Causal Chamber GmbH - All Rights Reserved
+# Unauthorized copying of this file, via any medium is strictly prohibited
+# Proprietary and confidential
+# Written by Juan L. Gamella <juan@causalchamber.ai>
+
+.PHONY: serve, venv, venv_test, SUITE, test, tests, doctests, clean, init_db
+
+SUITE = all
+
+# Make a virtual environment with the package's dependencies
+venv:
+	python3 -m venv ./venv
+	( \
+	. venv/bin/activate; \
+	pip install --upgrade pip setuptools; \
+	pip install numpy pandas requests pyyaml Pillow tqdm \
+	)
+
 
 .PHONY: test, tests, doctests, examples

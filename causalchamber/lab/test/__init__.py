@@ -19,21 +19,3 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-# Authors:
-#   - Juan L. Gamella [juan@causalchamber.ai]
-
-import numpy as np
-
-
-def model_e1(
-    # Input
-    theta_1,
-    theta_2,
-    # Parameters
-    I0,
-    Tp,
-    Tc,
-):
-    malus_factor = (Tp - Tc) * np.cos(theta_1 - theta_2) ** 2 + Tc
-    return I0 * malus_factor

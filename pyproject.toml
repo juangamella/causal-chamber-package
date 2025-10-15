@@ -6,9 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "causalchamber"
 version = "0.1.5"
 authors = [
-  { name="Juan L. Gamella", email="juangamella@gmail.com" },
+  { name="Juan L. Gamella", email="juan@causalchamber.ai" },
 ]
-description = "Access the datasets and models from the causal chambers."
+description = "Access the datasets, models and Remote Lab from Causal Chamber™."
 readme = "pypi_README.md"
 requires-python = ">=3.6"
 classifiers = [
