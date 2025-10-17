@@ -20,6 +20,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Third-party packages
+import termcolor
+
 # Imports from this package
 import lab.chamber
 from causalchamber.lab.api import API
