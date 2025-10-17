@@ -70,7 +70,7 @@ class Chamber():
         Verbosity level for output messages.
     """
     
-    def __init__(self, chamber_id, config, credentials_file, verbose=1):
+    def __init__(self, chamber_id, config, credentials_file, endpoint=None, verbose=1):
         """Start a new real-time connection to the specified chamber,
         returning a lab.Chamber instance to control it.
         
@@ -92,6 +92,9 @@ class Chamber():
             user = <YOUR USERNAME>
             password = <YOUR PASSWORD>
             ```
+        endpoint : str or None, optional
+            Base URL for the API endpoint. If None, it defaults to the
+            default in lab.api.API.
         verbose : int, optional
             Verbosity level for status messages. 0 for silent, 1 for normal
             output (default is 1).
@@ -106,6 +109,7 @@ class Chamber():
         LabError
             If no connection to the API can be established or an error
             on our side prevents starting a session with the chamber.
+
         """
         # Store parameters
         self._chamber_id = chamber_id
@@ -113,7 +117,7 @@ class Chamber():
         self._verbose = verbose
 
         # Load credentials
-        self._API = API(credentials_file)
+        self._API = API(credentials_file, endpoint)
 
         # Start a session
         if self.verbose:
