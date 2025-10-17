@@ -20,16 +20,20 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Imports from this package
 import lab.chamber
+from causalchamber.lab.api import API
 
 class Lab():
 
 
-    def __init__(self, credentials_file):
+    def __init__(self, credentials_file, endpoint=None, verbose=1):
         """
         """
-        pass
-
+        self._API = API(credentials_file, endpoint)
+        # This will check credentials by making a call to the API and
+        # updating the Lab's info
+        self.get_status(verbose=verbose)
 
     def get_status(self, verbose=1):
         """
@@ -73,6 +77,7 @@ class Experiment(lab.chamber.Batch):
     def submit(self):
         """
         """
+        # POST /experiments
         pass
 
     # Everything else is inherited:
