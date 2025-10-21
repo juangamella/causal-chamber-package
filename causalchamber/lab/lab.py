@@ -155,7 +155,7 @@ def strip_ansi(text):
     ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
     return ansi_escape.sub('', str(text))
 
-def _print_chamber_table(chambers):
+def _print_chamber_table(chambers, indentation = 0):
     """
     Print a formatted table from a list of chamber dictionaries.
     
@@ -198,9 +198,9 @@ def _print_chamber_table(chambers):
     header_row = '| ' + ' | '.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' |'
     separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
     
-    print(separator)
-    print(header_row)
-    print(separator)
+    print(' ' * indentation + separator)
+    print(' ' * indentation + header_row)
+    print(' ' * indentation + separator)
     
     # Print data rows
     for row in rows:
@@ -213,12 +213,12 @@ def _print_chamber_table(chambers):
             padded_row.append(padded_value)
         
         row_str = '| ' + ' | '.join(padded_row) + ' |'
-        print(row_str)
+        print(' ' * indentation + row_str)
     
-    print(separator)
+    print(' ' * indentation + separator)
 
 
-def _print_experiment_table(experiments):
+def _print_experiment_table(experiments, indentation=0):
     """
     Print a formatted table from a list of experiment dictionaries.
     
@@ -253,9 +253,9 @@ def _print_experiment_table(experiments):
     header_row = '| ' + ' | '.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' |'
     separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
     
-    print(separator)
-    print(header_row)
-    print(separator)
+    print(' ' * indentation + separator)
+    print(' ' * indentation + header_row)
+    print(' ' * indentation + separator)
     
     # Print data rows
     for row in rows:
@@ -268,6 +268,6 @@ def _print_experiment_table(experiments):
             padded_row.append(padded_value)
         
         row_str = '| ' + ' | '.join(padded_row) + ' |'
-        print(row_str)
+        print(' ' * indentation + row_str)
     
-    print(separator)
+    print(' ' * indentation + separator)
