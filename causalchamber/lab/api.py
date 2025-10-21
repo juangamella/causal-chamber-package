@@ -126,6 +126,10 @@ class API():
             raise UserError(0, f"Could not find header '[api_keys]' in credentials file at '{credentials_file}'. Check your credentials file and try again.")
 
     @property
+    def user_id(self):
+        return self._api_user
+        
+    @property
     def endpoint(self):
         """
         Get the API endpoint URL.

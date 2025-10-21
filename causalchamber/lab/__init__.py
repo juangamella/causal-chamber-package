@@ -21,3 +21,4 @@
 # SOFTWARE.
 
 from .chamber import Chamber
+from .lab import Lab
