@@ -54,7 +54,7 @@ class API():
         Base URL for the API endpoint.
     """
 
-    def __init__(self, credentials_file, endpoint='https://api.causalchamber.ai/v0'):
+    def __init__(self, credentials_file, endpoint=None):
         """
         Initialize the API client with credentials and endpoint.
         
@@ -109,9 +109,9 @@ class API():
         Traceback (most recent call last):
         ...
         FileNotFoundError: No credentials file found at the path you provided...
-        """
+        """        
         self._stats_timing = {}  # timing dictionary
-        self._endpoint = endpoint
+        self._endpoint = 'https://api.causalchamber.ai/v0' if endpoint is None else endpoint
         # Read credentials file
         if not os.path.exists(credentials_file):
             raise FileNotFoundError(f"No credentials file found at the path you provided: '{credentials_file}'")
@@ -230,7 +230,7 @@ class API():
             return response
 
         # Otherwise, parse the error codes            
-        if response.status_code in [400, 401, 403, 409]:
+        if response.status_code in [400, 401, 403, 409, 422]:
             raise UserError.from_response(response)
         else:
             raise LabError.from_response(response)

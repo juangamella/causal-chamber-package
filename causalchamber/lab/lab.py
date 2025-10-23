@@ -20,12 +20,20 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Standard library packages
+import pathlib
+import os
+
 # Third-party packages
 from termcolor import colored, cprint
+import pandas as pd
+import yaml
 
 # Imports from this package
+from causalchamber.datasets.utils import download_and_extract
 from causalchamber.lab.chamber import Batch
 from causalchamber.lab.api import API
+from causalchamber.lab.exceptions import LabError, UserError
 
 class Lab():
 
@@ -78,21 +86,28 @@ class Lab():
         """
         """
         # TODO: decide if checking chamber and config is done here
-        return Experiment(chamber_id, config, self._API)
+        return Protocol(chamber_id, config, self._API)
 
     def cancel_experiment(self, experiment_id):
         response = self._API.make_request('POST', f'experiments/{experiment_id}/cancel')
         return response.json()
 
     def download_data(self, experiment_id, root):
-        # Write following causalchamber.datasets.main.Dataset
-        pass
-    
+        experiment = self.get_experiment(experiment_id, verbose=0)
+        current_status = experiment['status']
+        if current_status != 'DONE':
+            raise UserError(0, f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})")
+        else:
+            dataset = ExperimentDataset(experiment_id = experiment_id,
+                                        download_url = experiment['download_url'],
+                                        checksum = experiment['checksum'],
+                                        root = root)
+            return dataset.data
+        
     def __str__(self):
         pass
 
-class Experiment(Batch):
-
+class Protocol(Batch):
 
     def __init__(self, chamber_id, config, api, verbose=1):
         """
@@ -127,6 +142,44 @@ class Experiment(Batch):
         return response.json()['experiment_id']
 
 
+
+class ExperimentDataset():
+
+    def __init__(self, experiment_id, download_url, checksum, root, download=True):
+        self._download_url = download_url
+        self._checksum = checksum
+        self._root = root# pathlib.Path(root).resolve()
+        if not os.path.isdir(self._root):
+            raise FileNotFoundError(f"root directory '{self._root}' not found. Please check and try again.")
+        # Download, verify and extract
+        if download:
+            download_and_extract(url = self._download_url,
+                                 root=self._root,
+                                 checksum=self._checksum,
+                                 algorithm='sha256')
+        # Load the YAML and data
+        path_to_metadata = pathlib.Path(root, experiment_id, 'metadata.yaml')
+        with open(path_to_metadata, 'r') as f:
+            metadata = yaml.safe_load(f)
+        # Store path to observations
+        self._path_to_data = pathlib.Path(root, experiment_id, metadata['observations_file']).resolve()
+        # Store path to images
+        if metadata['image_directory'] is None:
+            self._contains_images = False
+        else:
+            self._images_dir = pathlib.Path(root, experiment_id, metadata['image_directory'])
+            self._contains_images = True
+
+    @property
+    def data(self):
+        return pd.read_csv(self._path_to_data)
+
+    @property
+    def images(self):
+        # TODO
+        raise NotImplementedError()
+
+
 # --------------------------------------------------------------------
 # Auxiliary functions
 
@@ -135,14 +188,14 @@ _STATUS_COLORS = {
     'READY': 'light_green',
     'LOADING': 'light_cyan', 
     'EXECUTING': 'light_cyan',
-    'ERROR': 'red',
-    'OFFLINE': 'red',
+    'ERROR': 'light_red',
+    'OFFLINE': 'light_red',
     # Experiment status
-    'QUEUED': (255,176,0),
-    'RUNNING': (120,94,240),
-    'FAILED': (254,97,0),
+    'QUEUED': 'yellow',
+    'RUNNING': 'green',
+    'FAILED': 'light_red',
     'CANCELED': (150,150,150),
-    'DONE': (120,94,240)
+    'DONE': 'light_green'
     }
 
 def _fmt_status(status):
@@ -155,15 +208,16 @@ def strip_ansi(text):
     ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
     return ansi_escape.sub('', str(text))
 
-def _print_chamber_table(chambers, indentation = 0):
+def _print_chamber_table(chambers, indentation=0, col_separator=' '):
     """
     Print a formatted table from a list of chamber dictionaries.
     
     Args:
         chambers: List of dictionaries containing chamber information
+        indentation: Number of spaces to indent the table (default: 0)
+        col_separator: Character(s) to use as column separator (default: '|')
     """
     # Default values for missing fields
-    DEFAULT_ENTRY = "NA"
     DEFAULT_ENTRY = "NA"
     
     # Calculate column widths for better formatting
@@ -195,10 +249,20 @@ def _print_chamber_table(chambers, indentation = 0):
             col_widths[i] = max(col_widths[i], len(strip_ansi(value)))
     
     # Print header
-    header_row = '| ' + ' | '.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' |'
-    separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
+    sep_with_space = f' {col_separator} '
+    header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
     
-    print(' ' * indentation + separator)
+    separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
+    # # Create separator line based on separator type
+    # if col_separator == '|':
+    #     separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
+    # else:
+    #     # For other separators, use a simple line
+    #     total_width = sum(col_widths) + len(col_widths) * 3 + 1
+    #     separator = '-' * total_width
+    
+    # print(' ' * indentation + separator)
+    print()
     print(' ' * indentation + header_row)
     print(' ' * indentation + separator)
     
@@ -212,18 +276,20 @@ def _print_chamber_table(chambers, indentation = 0):
             padded_value = str(value) + ' ' * padding_needed
             padded_row.append(padded_value)
         
-        row_str = '| ' + ' | '.join(padded_row) + ' |'
+        row_str = col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator
         print(' ' * indentation + row_str)
     
     print(' ' * indentation + separator)
 
 
-def _print_experiment_table(experiments, indentation=0):
+def _print_experiment_table(experiments, indentation=0, col_separator=' '):
     """
     Print a formatted table from a list of experiment dictionaries.
     
     Args:
         experiments: List of dictionaries containing experiment information
+        indentation: Number of spaces to indent the table (default: 0)
+        col_separator: Character(s) to use as column separator (default: '|')
     """
     # Default values for missing fields
     DEFAULT_VALUE = "NA"
@@ -241,6 +307,7 @@ def _print_experiment_table(experiments, indentation=0):
         chamber_id = experiment.get('chamber_id', DEFAULT_VALUE)
         config = experiment.get('config', DEFAULT_VALUE)
         submitted_on = experiment.get('submitted_on', DEFAULT_VALUE)
+        download_url = experiment.get('download_url', DEFAULT_VALUE)
         
         row = [status, tag, experiment_id, chamber_id, config, submitted_on]
         rows.append(row)
@@ -250,10 +317,20 @@ def _print_experiment_table(experiments, indentation=0):
             col_widths[i] = max(col_widths[i], len(strip_ansi(value)))
     
     # Print header
-    header_row = '| ' + ' | '.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' |'
+    sep_with_space = f' {col_separator} '
+    header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
+
     separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
+    # # Create separator line based on separator type
+    # if col_separator == '|':
+    #     separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
+    # else:
+    #     # For other separators, use a simple line
+    #     total_width = sum(col_widths) + len(col_widths) * 3 + 1
+    #     separator = '-' * total_width
     
-    print(' ' * indentation + separator)
+    # print(' ' * indentation + separator)
+    print()
     print(' ' * indentation + header_row)
     print(' ' * indentation + separator)
     
@@ -267,7 +344,7 @@ def _print_experiment_table(experiments, indentation=0):
             padded_value = str(value) + ' ' * padding_needed
             padded_row.append(padded_value)
         
-        row_str = '| ' + ' | '.join(padded_row) + ' |'
+        row_str = col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator
         print(' ' * indentation + row_str)
     
     print(' ' * indentation + separator)
