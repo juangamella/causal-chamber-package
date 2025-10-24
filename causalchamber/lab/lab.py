@@ -23,6 +23,9 @@
 # Standard library packages
 import pathlib
 import os
+from datetime import datetime
+import time
+import numbers
 
 # Third-party packages
 from termcolor import colored, cprint
@@ -42,7 +45,10 @@ class Lab():
         """
         self._API = API(credentials_file, endpoint)        
         self.get_status(verbose=verbose) # This checks credentials by making a call to the API and
-        # updating the Lab's info
+        # Print status
+        _ = self.get_available_chambers(verbose=verbose)
+        _ = self.get_experiments(verbose=verbose, print_max=10)
+        
 
     def get_status(self, verbose=1):
         """
@@ -60,16 +66,19 @@ class Lab():
         # Return experiments
         return experiment
     
-    def get_experiments(self, verbose=1):
+    def get_experiments(self, print_max=None, verbose=1):
         """
         """
+        # Call API
         response = self._API.make_request('GET', 'experiments')
         experiments = response.json()['experiments']
+        # Sort by submission time
+        newest_first = sorted(experiments, key=lambda x: x['submitted_on'], reverse=True)
         # Optionally, print list of experiments
         if verbose:
-            _print_experiment_table(experiments)
+            _print_experiment_table(newest_first, print_max=print_max)
         # Return experiments
-        return experiments
+        return newest_first
     
     def get_available_chambers(self, verbose=1):
         """
@@ -96,7 +105,9 @@ class Lab():
         experiment = self.get_experiment(experiment_id, verbose=0)
         current_status = experiment['status']
         if current_status != 'DONE':
-            raise UserError(0, f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})")
+            raise UserError(code = 0,
+                            message = f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})",
+                            scheduler_id = experiment['scheduler_id'])
         else:
             dataset = ExperimentDataset(experiment_id = experiment_id,
                                         download_url = experiment['download_url'],
@@ -203,12 +214,17 @@ def _fmt_status(status):
 
 import re
 
+def _fmt_timestamp(ts):
+    """Transform an epoch timestamp (in seconds) into a human-readable datetime in the local time of the machine"""
+    return datetime.fromtimestamp(time.time()).astimezone().strftime('%a, %b %d, %Y %H:%M:%S %Z')
+    
+
 def strip_ansi(text):
     """Remove ANSI escape sequences from text for accurate length calculation"""
     ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
     return ansi_escape.sub('', str(text))
 
-def _print_chamber_table(chambers, indentation=0, col_separator=' '):
+def _print_chamber_table(chambers, indentation=0, col_separator=' ', line_separator = '─', line_char = '─'):
     """
     Print a formatted table from a list of chamber dictionaries.
     
@@ -252,7 +268,7 @@ def _print_chamber_table(chambers, indentation=0, col_separator=' '):
     sep_with_space = f' {col_separator} '
     header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
     
-    separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
+    separator = line_separator + line_separator.join(line_char * (w + 2) for w in col_widths) + line_separator
     # # Create separator line based on separator type
     # if col_separator == '|':
     #     separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
@@ -282,7 +298,7 @@ def _print_chamber_table(chambers, indentation=0, col_separator=' '):
     print(' ' * indentation + separator)
 
 
-def _print_experiment_table(experiments, indentation=0, col_separator=' '):
+def _print_experiment_table(experiments, print_max=None, indentation=0, col_separator=' ', line_separator = '─', line_char = '─'):
     """
     Print a formatted table from a list of experiment dictionaries.
     
@@ -291,6 +307,16 @@ def _print_experiment_table(experiments, indentation=0, col_separator=' '):
         indentation: Number of spaces to indent the table (default: 0)
         col_separator: Character(s) to use as column separator (default: '|')
     """
+    # Check inputs
+    if print_max is not None and not isinstance(print_max, numbers.Integral):
+        raise TypeError(f"print_max must be an integer or None, not {type(print_max).__name__}")
+    if print_max is not None and print_max <= 0:
+        raise ValueError(f"print_max bust be None or an integer larger than zero")
+
+    # Print n experiments
+    n = len(experiments) if print_max is None else min(print_max, len(experiments))
+    to_print = experiments[0:n]
+    
     # Default values for missing fields
     DEFAULT_VALUE = "NA"
     
@@ -300,13 +326,16 @@ def _print_experiment_table(experiments, indentation=0, col_separator=' '):
     
     # Process data and calculate maximum widths
     rows = []
-    for experiment in experiments:
+    for experiment in to_print:
         status = _fmt_status(experiment.get('status'))
         tag = experiment.get('tag', DEFAULT_VALUE)
         experiment_id = experiment.get('experiment_id', DEFAULT_VALUE)
         chamber_id = experiment.get('chamber_id', DEFAULT_VALUE)
         config = experiment.get('config', DEFAULT_VALUE)
-        submitted_on = experiment.get('submitted_on', DEFAULT_VALUE)
+        if 'submitted_on' in experiment:
+            submitted_on = _fmt_timestamp(experiment.get('submitted_on'))
+        else:
+            submitted_on = DEFAULT_VALUE
         download_url = experiment.get('download_url', DEFAULT_VALUE)
         
         row = [status, tag, experiment_id, chamber_id, config, submitted_on]
@@ -320,7 +349,7 @@ def _print_experiment_table(experiments, indentation=0, col_separator=' '):
     sep_with_space = f' {col_separator} '
     header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
 
-    separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
+    separator = line_separator + line_separator.join(line_char * (w + 2) for w in col_widths) + line_separator
     # # Create separator line based on separator type
     # if col_separator == '|':
     #     separator = '+' + '+'.join('-' * (w + 2) for w in col_widths) + '+'
@@ -346,5 +375,9 @@ def _print_experiment_table(experiments, indentation=0, col_separator=' '):
         
         row_str = col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator
         print(' ' * indentation + row_str)
-    
+
+    if len(to_print) < len(experiments):
+        print()
+        print(' ' * indentation, colored(f' --- showing {len(to_print)} / {len(experiments)} experiments ---', (100,100,100)))
     print(' ' * indentation + separator)
+    print(' ' * indentation + f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
