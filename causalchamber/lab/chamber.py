@@ -70,7 +70,7 @@ class Chamber():
         Verbosity level for output messages.
     """
     
-    def __init__(self, chamber_id, config, credentials_file, endpoint=None, verbose=1):
+    def __init__(self, chamber_id, config, credentials_file, endpoint="https://api.causalchamber.ai/v0", verbose=1):
         """Start a new real-time connection to the specified chamber,
         returning a lab.Chamber instance to control it.
         
@@ -93,8 +93,7 @@ class Chamber():
             password = <YOUR PASSWORD>
             ```
         endpoint : str or None, optional
-            Base URL for the API endpoint. If None, it defaults to the
-            default in lab.api.API.
+            Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
         verbose : int, optional
             Verbosity level for status messages. 0 for silent, 1 for normal
             output (default is 1).

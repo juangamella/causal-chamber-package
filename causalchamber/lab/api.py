@@ -54,7 +54,7 @@ class API():
         Base URL for the API endpoint.
     """
 
-    def __init__(self, credentials_file, endpoint=None):
+    def __init__(self, credentials_file, endpoint='https://api.causalchamber.ai/v0'):
         """
         Initialize the API client with credentials and endpoint.
         
@@ -111,7 +111,7 @@ class API():
         FileNotFoundError: No credentials file found at the path you provided...
         """        
         self._stats_timing = {}  # timing dictionary
-        self._endpoint = 'https://api.causalchamber.ai/v0' if endpoint is None else endpoint
+        self._endpoint = endpoint
         # Read credentials file
         if not os.path.exists(credentials_file):
             raise FileNotFoundError(f"No credentials file found at the path you provided: '{credentials_file}'")
