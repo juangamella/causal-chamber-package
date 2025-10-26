@@ -109,7 +109,7 @@ class API():
         Traceback (most recent call last):
         ...
         FileNotFoundError: No credentials file found at the path you provided...
-        """
+        """        
         self._stats_timing = {}  # timing dictionary
         self._endpoint = endpoint
         # Read credentials file
@@ -125,6 +125,10 @@ class API():
         except configparser.MissingSectionHeaderError:
             raise UserError(0, f"Could not find header '[api_keys]' in credentials file at '{credentials_file}'. Check your credentials file and try again.")
 
+    @property
+    def user_id(self):
+        return self._api_user
+        
     @property
     def endpoint(self):
         """
@@ -226,7 +230,7 @@ class API():
             return response
 
         # Otherwise, parse the error codes            
-        if response.status_code in [400, 401, 403, 409]:
+        if response.status_code in [400, 401, 403, 409, 422]:
             raise UserError.from_response(response)
         else:
             raise LabError.from_response(response)

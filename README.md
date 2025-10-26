@@ -110,13 +110,13 @@ Setting `enclose=False` will return the name without surrounding `$`. The comple
 
 ## Versioning
 
-Non backward-compatible changes to the package are reflected by a change to the minor or major version number,
+We follow [Semantic Versioning](https://semver.org/), i.e., non backward-compatible changes to the package are reflected by a change to the major version number,
 
-> e.g. *code that uses causalchamber==0.1.2 will run with causalchamber==0.1.3, but may not run with causalchamber==0.2.0.*
+> e.g., *code that uses causalchamber==0.1.2 will run with causalchamber==0.2.0, but may not run with causalchamber==1.0.0.*
 
 ## Help & Feedback
 
-If you encounter a bug, need help using the package, or want to leave us some (highly welcome) feedback, please send us an [email](mailto:juan@causalchamber.ai), leave a [GitHub issue](https://github.com/juangamella/causal-chamber-package/issues) or start a new [Discussion](https://github.com/juangamella/causal-chamber-package/discussions).
+If you encounter a bug, need help using the package, or want to leave us some (highly welcome) feedback, please send us an [email](mailto:support@causalchamber.ai), leave a [GitHub issue](https://github.com/juangamella/causal-chamber-package/issues) or start a new [Discussion](https://github.com/juangamella/causal-chamber-package/discussions).
 
 ## License
 
