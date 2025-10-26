@@ -43,6 +43,7 @@ def download_and_extract(
     url,
     root,
     checksum=None,
+    algorithm='md5'
 ):
     """
     Parameters
@@ -50,28 +51,38 @@ def download_and_extract(
     url : string
         The download URL.
     root : string
-        The path to the directory on the local computer, where the file will be downloaded and extrated.
+        The path to the directory on the local computer, where the file will be downloaded and extracted.
     checksum : string or NoneType, default=None
         The expected MD5 checksum of the downloaded file, which will
         be checked against its actual checksum. If `None`, the
         checksum is not checked.
+    algorithm : str in ['md5', 'sha256'], optional
+        The algorithm used to compute the checksum. Defaults to 'md5'
 
     Returns
     -------
     None
 
     """
+    # Check input
+    if algorithm == 'md5':
+        hasher = _compute_md5
+    elif algorithm == 'sha256':
+        hasher = _compute_sha256
+    else:
+        raise ValueError("algorithm must be 'md5' or 'sha256'")
+    
     local_zipfile = "causal_chamber_" + hashlib.md5(url.encode()).hexdigest() + ".zip"
     zip_path = Path(root, local_zipfile)
     # Download
     _download(url, zip_path)
-    # Verify
+    # Verify    
     if checksum is not None:
         print("  Verifying checksum...", end="")
-        md5 = _compute_md5(zip_path, checksum)
-        if checksum != md5:
+        computed = hasher(zip_path)
+        if checksum != computed:
             raise Exception(
-                f'Checksum does not match!\n  expected: "{checksum}"\n  computed: "{md5}"'
+                f'Checksum does not match!\n  expected: "{checksum}"\n  computed: "{computed}"'
             )
         else:
             print(" done.")
@@ -107,14 +118,21 @@ def _unzip(path, output_dir):
         zip_ref.extractall(output_dir)
 
 
-def _compute_md5(path, checksum):
-    """Verify the MD5 checksum of a file at the given path."""
+def _compute_md5(path):
+    """Compute the MD5 checksum of a file at the given path."""
     hasher = hashlib.md5()
     with open(path, "rb") as f:
         data = f.read()
         hasher.update(data)
     return hasher.hexdigest()
 
+def _compute_sha256(path):
+    """Compute the SHA-256 checksum of a file at the given path."""
+    hasher = hashlib.sha256()
+    with open(path, "rb") as f:
+        data = f.read()
+        hasher.update(data)
+    return hasher.hexdigest()
 
 # --------------------------------------------------------------------
 # Functions used by experiment protocol generators
