@@ -34,6 +34,7 @@ doctests:
 	PYTHONPATH=./ python causalchamber/ground_truth/main.py
 	PYTHONPATH=./ python causalchamber/lab/api.py
 	PYTHONPATH=./ python causalchamber/lab/chamber.py
+	PYTHONPATH=./ python causalchamber/lab/lab.py
 
 
 # Run the examples from the README
