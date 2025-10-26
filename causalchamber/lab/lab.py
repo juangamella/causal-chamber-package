@@ -404,16 +404,16 @@ class ExperimentDataset():
                              checksum=self._checksum,
                              algorithm='sha256')
         # Load the YAML metadata
-        path_to_metadata = pathlib.Path(root, experiment_id, 'metadata.yaml')
+        path_to_metadata = pathlib.Path(self._root, experiment_id, 'metadata.yaml')
         with open(path_to_metadata, 'r') as f:
             metadata = yaml.safe_load(f)
         # Store path to observations
-        self._path_to_data = pathlib.Path(root, experiment_id, metadata['observations_file']).resolve()
+        self._path_to_data = pathlib.Path(self._root, experiment_id, metadata['observations_file']).resolve()
         # Store path to images
         if metadata['image_directory'] is None:
             self._contains_images = False
         else:
-            self._images_dir = pathlib.Path(root, experiment_id, metadata['image_directory'])
+            self._images_dir = pathlib.Path(self._root, experiment_id, metadata['image_directory'])
             self._contains_images = True
 
     @property
