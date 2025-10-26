@@ -51,7 +51,7 @@ class Lab():
     This class provides methods to
       - check chamber status
       - create, cancel and submit experiments to a chamber queue
-      - download the resulting experimental data
+      - download the data from completed experiments
       - open a real-time connection to a chamber
     """
 
@@ -127,9 +127,9 @@ class Lab():
         Parameters
         ----------
         verbose : bool, optional        
-            If True (default), this will print tables with the status
-            of the available chambers and the 10 latest experiments
-            belonging to the user. If False, nothing is printed.
+            If True (default), this will print a table with the
+            experiments belonging to the user in the credentials
+            file. If False, nothing is printed.
         print_max : int or None, optional
             Maximum number of experiments to print (if
             verbose=True). If None, all experiments belonging to the
@@ -147,6 +147,7 @@ class Lab():
         list of dict
             List of dictionaries containing information about each
             experiment, sorted by submission time (newest first).
+
         """
         # Call API
         response = self._API.make_request('GET', 'experiments')
@@ -220,10 +221,6 @@ class Lab():
         dict
             Dictionary containing the updated experiment metadata.
         
-        Examples
-        --------
-        >>> response = lab.cancel_experiment('exp_12345')
-        >>> print(response)
         """
         response = self._API.make_request('POST', f'experiments/{experiment_id}/cancel')
         return response.json()
@@ -428,11 +425,6 @@ class ExperimentDataset():
         -------
         pandas.DataFrame
             DataFrame containing the experimental observations.
-        
-        Examples
-        --------
-        >>> df = dataset.df
-        >>> print(df.columns)
         """
         return pd.read_csv(self._path_to_data)
 
@@ -485,8 +477,8 @@ def _fmt_status(status):
     
     Examples
     --------
-    >>> formatted = _fmt_status('DONE')
-    >>> print(formatted)
+    >>> _fmt_status('DONE')
+    'DONE'
     """
     return colored(status, _STATUS_COLORS.get(status, None))
 
@@ -508,12 +500,11 @@ def _fmt_timestamp(ts):
     
     Examples
     --------
-    >>> formatted_time = _fmt_timestamp(1234567890)
-    >>> print(formatted_time)
-    'Fri, Feb 13, 2009 23:31:30 UTC'
+    >>> _fmt_timestamp(1761471966)
+    'Sun, Oct 26, 2025 10:46:06 CET'
 
     """
-    return datetime.fromtimestamp(time.time()).astimezone().strftime('%a, %b %d, %Y %H:%M:%S %Z')
+    return datetime.fromtimestamp(ts).astimezone().strftime('%a, %b %d, %Y %H:%M:%S %Z')
     
 
 def _strip_ansi(text):
@@ -536,7 +527,7 @@ def _strip_ansi(text):
     >>> colored_text = "\\x1b[32mGreen text\\x1b[0m"
     >>> plain_text = _strip_ansi(colored_text)
     >>> print(plain_text)
-    'Green text'
+    Green text
     """
     ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
     return ansi_escape.sub('', str(text))
@@ -663,12 +654,36 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
     ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
     ... ]
     >>> _print_experiment_table(experiments, print_max=10)
+    <BLANKLINE>
+      Status   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
+    ───────────────────────────────────────────────────────────────────────────────────────────
+      DONE     test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
+    ───────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+    
+    >>> _print_experiment_table(experiments, print_max=10.5)
+    Traceback (most recent call last):
+        ...
+    TypeError: print_max must be an integer or None, not float
+    >>> _print_experiment_table(experiments, print_max=-1)
+    Traceback (most recent call last):
+        ...
+    ValueError: print_max must be None or an integer larger than zero
+    >>> _print_experiment_table(experiments, print_max='10')
+    Traceback (most recent call last):
+        ...
+    TypeError: print_max must be an integer or None, not str
+    >>> _print_experiment_table(experiments, print_max=0)
+    Traceback (most recent call last):
+        ...
+    ValueError: print_max must be None or an integer larger than zero
     """
     # Check inputs
     if print_max is not None and not isinstance(print_max, numbers.Integral):
         raise TypeError(f"print_max must be an integer or None, not {type(print_max).__name__}")
     if print_max is not None and print_max <= 0:
-        raise ValueError(f"print_max bust be None or an integer larger than zero")
+        raise ValueError("print_max must be None or an integer larger than zero")
 
     # Print n experiments
     n = len(experiments) if print_max is None else min(print_max, len(experiments))
@@ -693,7 +708,6 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
             submitted_on = _fmt_timestamp(experiment.get('submitted_on'))
         else:
             submitted_on = DEFAULT_VALUE
-        download_url = experiment.get('download_url', DEFAULT_VALUE)
         
         row = [status, tag, experiment_id, chamber_id, config, submitted_on]
         rows.append(row)
@@ -731,3 +745,16 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
     print(' ' * indentation + separator)
     print(' ' * indentation + f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
     print()
+
+
+
+# ----------------------------------------------------------------------
+# Doctests
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod(
+        extraglobs={},
+        verbose=True,
+        optionflags=doctest.ELLIPSIS,
+    )
