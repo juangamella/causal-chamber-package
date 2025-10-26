@@ -1,8 +1,8 @@
 v0.2.0, 2025-10-15
+-- new lab.Lab class to manage access the remote Lab and submit experiments to the queue
 -- Added endpoint as an optional parameter to lab.Chamber
 -- Updated versioning note in README to reflect semantic versioning
--- TODO: new Lab and Experiment functionality
--- TODO: Allow for calls to .wait on lab.Chamber
+-- Update support email in README to support@causalchamber.ai
 v0.1.6, 2025-10-15
 -- First implementation of the Remote Lab client in causalchamber.lab
 v0.1.5, 2025-02-26
