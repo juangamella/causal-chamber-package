@@ -1,4 +1,4 @@
-v0.2.0, 2025-10-15
+v0.2.0, 2025-10-26
 -- new lab.Lab class to manage access the remote Lab and submit experiments to the queue
 -- Added endpoint as an optional parameter to lab.Chamber
 -- Updated versioning note in README to reflect semantic versioning
