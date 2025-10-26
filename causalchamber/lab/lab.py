@@ -547,7 +547,7 @@ def _print_chamber_table(chambers, indentation=0, col_separator=' ', line_separa
     col_separator : str, optional
         Character(s) to use as column separator. Default is ' '.
     line_separator : str, optional
-        Character to use at line boundaries. Default is '─'.
+        Character to use at line boundaries, including between columns. Default is '─'.
     line_char : str, optional
         Character to use for horizontal lines. Default is '─'.
     
@@ -631,7 +631,7 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
     col_separator : str, optional
         Character(s) to use as column separator. Default is ' '.
     line_separator : str, optional
-        Character to use at line boundaries. Default is '─'.
+        Character to use at line boundaries, including between columns. Default is '─'.
     line_char : str, optional
         Character to use for horizontal lines. Default is '─'.
     
