@@ -225,7 +225,7 @@ class Lab():
         response = self._API.make_request('POST', f'experiments/{experiment_id}/cancel')
         return response.json()
 
-    def download_data(self, experiment_id, root):
+    def download_data(self, experiment_id, download_dir, verbose=True):
         """
         Download data from a completed experiment.
         
@@ -233,8 +233,11 @@ class Lab():
         ----------
         experiment_id : str
             The unique identifier of the experiment.
-        root : str or pathlib.Path
-            Root directory where the data will be downloaded and extracted.
+        download_dir : str or pathlib.Path
+            Directory where the data will be downloaded and extracted.
+        verbose : bool, optional
+            If True, traces are printed and a download progress bar is
+            shown. If False no outputs are produced. Defauls to True.
         
         Returns
         -------
@@ -244,7 +247,8 @@ class Lab():
         Raises
         ------
         UserError
-            If the experiment is not in 'DONE' status.      
+            If the experiment is not in 'DONE' status.
+
         """
         experiment = self.get_experiment(experiment_id)
         current_status = experiment['status']
@@ -256,7 +260,8 @@ class Lab():
             dataset = ExperimentDataset(experiment_id = experiment_id,
                                         download_url = experiment['download_url'],
                                         checksum = experiment['checksum'],
-                                        root = root)
+                                        root = download_dir,
+                                        verbose=verbose)
             return dataset
         
 class Protocol(Batch):
@@ -368,7 +373,7 @@ class ExperimentDataset():
     Container for experimental data downloaded from the Lab.    
     """
 
-    def __init__(self, experiment_id, download_url, checksum, root):
+    def __init__(self, experiment_id, download_url, checksum, root, verbose=True):
         """
         Downloads the given experiment_id from the provided
         download_url into the directory specified in root. Verifies
@@ -386,6 +391,9 @@ class ExperimentDataset():
             Root directory where the data will be stored.
         download : bool, optional
             Whether to download the data immediately. Default is True.
+        verbose : bool, optional
+            If True, a download progress bar is shown. If False no
+            outputs are produced. Defauls to True.
         
         Raises
         ------
@@ -402,7 +410,8 @@ class ExperimentDataset():
         download_and_extract(url = self._download_url,
                              root=self._root,
                              checksum=self._checksum,
-                             algorithm='sha256')
+                             algorithm='sha256',
+                             verbose=verbose)
         # Load the YAML metadata
         path_to_metadata = pathlib.Path(self._root, experiment_id, 'metadata.yaml')
         with open(path_to_metadata, 'r') as f:

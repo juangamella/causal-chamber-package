@@ -43,7 +43,8 @@ def download_and_extract(
     url,
     root,
     checksum=None,
-    algorithm='md5'
+    algorithm='md5',
+    verbose=True,
 ):
     """
     Parameters
@@ -58,6 +59,9 @@ def download_and_extract(
         checksum is not checked.
     algorithm : str in ['md5', 'sha256'], optional
         The algorithm used to compute the checksum. Defaults to 'md5'
+    verbose : bool, optional
+        If True, traces are printed and a download progress bar is shown. If False no
+        outputs are produced. Defauls to True.
 
     Returns
     -------
@@ -75,38 +79,40 @@ def download_and_extract(
     local_zipfile = "causal_chamber_" + hashlib.md5(url.encode()).hexdigest() + ".zip"
     zip_path = Path(root, local_zipfile)
     # Download
-    _download(url, zip_path)
+    _download(url, zip_path, verbose=verbose)
     # Verify    
     if checksum is not None:
-        print("  Verifying checksum...", end="")
+        print("  Verifying checksum...", end="") if verbose else None
         computed = hasher(zip_path)
         if checksum != computed:
             raise Exception(
                 f'Checksum does not match!\n  expected: "{checksum}"\n  computed: "{computed}"'
             )
         else:
-            print(" done.")
-    # Extract
-    print(f'  Extracting zip-file contents to "{root}"...', end="")
+            print(" done.") if verbose else None
+    # Extract    
+    print(f'  Extracting zip-file contents to "{root}"...', end="") if verbose else None
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(root)
-    print(" done.")
+    print(" done.") if verbose else None
 
 
-def _download(url, output_path):
+def _download(url, output_path, verbose):
     """Function to actually download the file from the given URL into the given output_path."""
-    print(f'Downloading dataset from "{url}" into "{output_path}"\n')
+    print(f'Downloading dataset from "{url}" into "{output_path}"\n') if verbose else None
     response = requests.get(url, stream=True)
     total_size_in_bytes = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 Kibibyte
-    progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
+    if verbose:
+        progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
     with open(output_path, "wb") as file:
         for data in response.iter_content(block_size):
-            progress_bar.update(len(data))
+            progress_bar.update(len(data)) if verbose else None
             file.write(data)
-    progress_bar.close()
-    if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        print("ERROR, something went wrong")
+    if verbose:
+        progress_bar.close()
+        if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
+            print("ERROR, something went wrong")
 
 
 def _unzip(path, output_dir):
