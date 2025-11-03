@@ -225,7 +225,7 @@ class Lab():
         response = self._API.make_request('POST', f'experiments/{experiment_id}/cancel')
         return response.json()
 
-    def download_data(self, experiment_id, download_dir, verbose=True):
+    def download_data(self, experiment_id, root, verbose=True):
         """
         Download data from a completed experiment.
         
@@ -233,7 +233,7 @@ class Lab():
         ----------
         experiment_id : str
             The unique identifier of the experiment.
-        download_dir : str or pathlib.Path
+        root : str or pathlib.Path
             Directory where the data will be downloaded and extracted.
         verbose : bool, optional
             If True, traces are printed and a download progress bar is
@@ -260,7 +260,7 @@ class Lab():
             dataset = ExperimentDataset(experiment_id = experiment_id,
                                         download_url = experiment['download_url'],
                                         checksum = experiment['checksum'],
-                                        root = download_dir,
+                                        root = root,
                                         verbose=verbose)
             return dataset
         
