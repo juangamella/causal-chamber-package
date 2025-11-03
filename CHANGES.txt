@@ -1,3 +1,7 @@
+v0.2.1, 2025-11-03
+-- allow suppressing stdout outputs (ie., tqdm) in rlab.download_data with verbose=False
+-- print code commit in lab.Chamber
+-- round float values in SET instructions to 4 decimal places
 v0.2.0, 2025-10-26
 -- new lab.Lab class to manage access the remote Lab and submit experiments to the queue
 -- Added endpoint as an optional parameter to lab.Chamber

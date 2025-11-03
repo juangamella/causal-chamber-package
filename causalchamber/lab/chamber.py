@@ -132,6 +132,7 @@ class Chamber():
             self._chamber_model = response.json()['chamber_model']
             self._config_version = response.json()['config_version']
             self._documentation = response.json()['documentation']
+            self._codebase_version = response.json()['codebase_version']
         finally:
             spinner.stop() if self.verbose else None
             
@@ -275,6 +276,19 @@ class Chamber():
         """
         return self._config_version
 
+
+    @property
+    def codebase_version(self):
+        """
+        Get the version of the codebase running on the chamber.
+        
+        Returns
+        -------
+        str
+            Version tag or commit.
+        """
+        return self._codebase_version
+
     @property
     def documentation(self):
         """
@@ -376,6 +390,7 @@ class Chamber():
        session_id : {self.session_id}
          endpoint : {self._API.endpoint}
     documentation : {self.documentation}
+ codebase_version : {self.codebase_version}
         """
         return msg
 
@@ -643,6 +658,12 @@ def _generate_set(target, value):
     'SET,red,240.0'
     >>> _generate_set('pol_1', 97.1)
     'SET,pol_1,97.1'
+    >>> _generate_set('pol_1', 97.11)
+    'SET,pol_1,97.11'
+    >>> _generate_set('hatch',-3.8205202890218004e-13)
+    'SET,hatch,-0.0'
+    >>> _generate_set('hatch',3.8205202890218004e-13)
+    'SET,hatch,0.0'
     
     >>> _generate_set(123, 97.1)
     Traceback (most recent call last):
@@ -658,7 +679,8 @@ def _generate_set(target, value):
     if not isinstance(target, str):
         raise TypeError(f"target must be a string, not {type(target).__name__}")
     # Generate and return
-    return f'SET,{target},{float(value)}'
+    value = round(float(value), 4)
+    return f'SET,{target},{value}'
 
 def _generate_msr(n, delay):
     """
