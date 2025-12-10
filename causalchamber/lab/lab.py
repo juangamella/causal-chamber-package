@@ -55,12 +55,12 @@ class Lab():
       - open a real-time connection to a chamber
     """
 
-    def __init__(self, credentials_file, endpoint="https://api.causalchamber.ai/v0", verbose=True):
+    def __init__(self, credentials_file=None, endpoint="https://api.causalchamber.ai/v0", verbose=True, credentials=None):
         """Initialize the Lab interface.
         
         Parameters
         ----------
-        credentials_file : str or pathlib.Path
+        credentials_file : str or None, optional
             Path to the configuration file containing API
             credentials. The file should contain the following lines:
             ```
@@ -68,12 +68,18 @@ class Lab():
             user = <YOUR USERNAME>
             password = <YOUR PASSWORD>
             ```
+            Either credentials or credentials_file must be
+            provided. If both are, credentials is used.
         endpoint : str, optional
             Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
         verbose : bool, optional        
             If True (default), this will print tables with the status
             of the available chambers and the 10 latest experiments
             belonging to the user. If False, nothing is printed.
+        credentials : tuple of string or None, optional        
+            A tuple (<user>, <password>) with the user and password
+            for the API. Either credentials or credentials_file
+            must be provided. If both are, credentials is used.
 
         Raises
         ------
@@ -84,7 +90,9 @@ class Lab():
             internal error ocurred on our side.
 
         """
-        self._API = API(credentials_file, endpoint)        
+        self._API = API(credentials_file=credentials_file,
+                        endpoint=endpoint,
+                        credentials=credentials)
 
         # Get available chambers & experiments
         print("\n\nChambers") if verbose else None

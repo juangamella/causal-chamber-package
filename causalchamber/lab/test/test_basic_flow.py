@@ -20,12 +20,43 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Check succesful flow -> chamber connection (use tt-test-0001) -> submit some instructions -> submit a batch
+import os
 
+USER = os.getenv('API_TEST_USER')
+PASSWORD = os.getenv('API_TEST_PASSWORD')
+KEYFILE = os.getenv('API_TEST_KEYFILE')
+
+# ---------------------------------
+# API calls
+
+# Check starting an API connection with a credentials_file, credentials, both and neither
 # Check that wrong credentials raise a UserError(401, ...)
 # Check that wrong chamber_id raises a UserError(403, ...)
-# Check that wrong instruction parameters raises a UserError(400, ...)
-
 # Check that calling API.make_requests with a bad URL raises LabError(404, ...)
 # Check that calling API.make_requests with a bad method raises LabError(404, ...)
 # Check that calling API.make_requests to a non-existent endpoint raises LabError(000, ...)
+
+
+# ---------------------------------
+# Real-time connections
+
+# As chamber_id, use 'tt-test-dumy'. As chamber configurations use 'standard' for observations and 'camera' for observations + images.
+
+# Check starting a chamber connection with credentials_file, credentials, both and neither
+
+# Check that wrong credentials raise a UserError(401, ...)
+
+# Check that wrong chamber_id raises a UserError(403, ...)
+
+# Submit some basic correct instructions
+
+# Check that wrong instruction parameters raises a UserError(400, ...)
+
+# (observations only) Check succesful flow -> chamber connection (use tt-test-dumy) -> submit some instructions -> submit a batch
+
+# (images) Check succesful flow -> chamber connection (use tt-test-0001) -> submit some instructions -> submit a batch
+
+# ---------------------------------
+# Queue mode
+
+# Check starting an rlab connection with a credentials_file and credentials

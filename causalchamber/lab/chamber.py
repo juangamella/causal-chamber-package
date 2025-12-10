@@ -70,7 +70,7 @@ class Chamber():
         Verbosity level for output messages.
     """
     
-    def __init__(self, chamber_id, config, credentials_file, endpoint="https://api.causalchamber.ai/v0", verbose=1):
+    def __init__(self, chamber_id, config, credentials_file=None, endpoint="https://api.causalchamber.ai/v0", verbose=1, credentials=None):
         """Start a new real-time connection to the specified chamber,
         returning a lab.Chamber instance to control it.
         
@@ -84,7 +84,7 @@ class Chamber():
             The unique chamber identifier.
         config : str
             Desired configuration of the chamber.
-        credentials_file : str
+        credentials_file : str or None, optional
             Path to the configuration file containing API
             credentials. The file should contain the following lines:
             ```
@@ -92,16 +92,24 @@ class Chamber():
             user = <YOUR USERNAME>
             password = <YOUR PASSWORD>
             ```
+            Either credentials or credentials_file must be
+            provided. If both are, credentials is used.
         endpoint : str or None, optional
             Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
         verbose : int, optional
             Verbosity level for status messages. 0 for silent, 1 for normal
             output (default is 1).
+        credentials : tuple of string or None, optional        
+            A tuple (<user>, <password>) with the user and password
+            for the API. Either credentials or credentials_file
+            must be provided. If both are, credentials is used.
         
         Raises
         ------
         FileNotFoundError
             If the credentials file does not exist at the specified path.
+        ValueError
+            If neither credentials nor credentials_file is provided.
         UserError
             If credentials are incorrect, or the requested chamber or
             configuration do not exist.        
@@ -116,7 +124,9 @@ class Chamber():
         self._verbose = verbose
 
         # Load credentials
-        self._API = API(credentials_file, endpoint)
+        self._API = API(credentials_file = credentials_file,
+                        endpoint = endpoint,
+                        credentials = credentials)
 
         # Start a session
         if self.verbose:
