@@ -434,7 +434,7 @@ class Batch():
         """
         self._chamber = chamber
         self._instructions = []
-
+        
     @property
     def instructions(self):
         """
@@ -587,6 +587,54 @@ class Batch():
         """
         return self.measure(n, delay)
 
+    def from_df(self, dataframe, n=1, delay=0):
+        """Load instructions from a pandas dataframe.
+
+        For each row in the DataFrame, insert one
+        'SET,<target>,<value>' instruction per column, where <target>
+        is the name of the column and <value> is its entry in that
+        row. After all the SET instructions for a row, insert a
+        'MSR,n,delay' instruction.
+
+        See the example below.
+
+        Parameters
+        ----------
+        dataframe : pd.DataFrame
+            DataFrame where each column represents a target variable and each row
+            represents a set of values to configure before measurement.
+        n : int, optional
+            Number of measurements to perform after setting each row's values.
+            Default is 1.
+        delay : float, optional
+            Delay (in seconds or appropriate units) between setting values and
+            measuring. Default is 0.
+
+        Returns
+        -------
+        None
+
+        Examples
+        --------
+        >>> batch = Batch(None)
+        >>> df = pd.DataFrame({
+        ...     'red': [1.0, 2.0],
+        ...     'blue': [0.1, 0.2]
+        ... })
+        >>> batch.from_df(df, n=5, delay=10)
+        >>> batch.instructions
+        ['SET,red,1.0', 'SET,blue,0.1', 'MSR,5,10', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,5,10']
+
+        """
+        targets = dataframe.columns
+        for _, row in dataframe.iterrows():
+            # Add SET instructions
+            for target in dataframe.columns:
+                self.set(target, row[target])
+            # Add MSR instruction
+            self.measure(n = n, delay=delay)
+        return None
+    
     def clear(self):
         """
         Clears the list of instructions in the batch.x        
