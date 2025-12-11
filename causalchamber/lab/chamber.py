@@ -624,6 +624,11 @@ class Batch():
         >>> batch.from_df(df, n=5, delay=10)
         >>> batch.instructions
         ['SET,red,1.0', 'SET,blue,0.1', 'MSR,5,10', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,5,10']
+        >>> batch.clear()
+
+        >>> batch.from_df(df)
+        >>> batch.instructions
+        ['SET,red,1.0', 'SET,blue,0.1', 'MSR,1,0', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,1,0']
 
         """
         targets = dataframe.columns
