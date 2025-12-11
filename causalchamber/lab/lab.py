@@ -34,6 +34,7 @@ import re
 
 # Third-party packages
 from termcolor import colored, cprint
+import numpy as np
 import pandas as pd
 import yaml
 from PIL import Image
@@ -423,14 +424,14 @@ class ExperimentDataset():
         # Load the YAML metadata
         path_to_metadata = pathlib.Path(self._root, experiment_id, 'metadata.yaml')
         with open(path_to_metadata, 'r') as f:
-            metadata = yaml.safe_load(f)
+            self.metadata = yaml.safe_load(f)
         # Store path to observations
-        self._path_to_data = pathlib.Path(self._root, experiment_id, metadata['observations_file']).resolve()
+        self._path_to_data = pathlib.Path(self._root, experiment_id, self.metadata['observations_file']).resolve()
         # Store path to images
-        if metadata['image_directory'] is None:
+        if self.metadata['image_directory'] is None:
             self._contains_images = False
         else:
-            self._images_dir = pathlib.Path(self._root, experiment_id, metadata['image_directory'])
+            self._images_dir = pathlib.Path(self._root, experiment_id, self.metadata['image_directory'])
             self._contains_images = True
 
     @property
@@ -446,18 +447,65 @@ class ExperimentDataset():
         return pd.read_csv(self._path_to_data)
 
     @property
-    def image_array(self):
+    def image_arrays(self):
         """
-        Load the experiment images into a numpy.ndarray.
+        Load the experiment images from disk into a list of numpy.ndarray with dimensions (height, width, 3).
+
+        For lazy loading, use image_iterator instead.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If a progress bar should be shown as the images are
+            loaded. Default is False.
         
         Returns
         -------
-        numpy.ndarray or None
-            The numpy array containing the images, or None, if this is
-            not an image dataset. 
+        list of numpy.ndarray
+            The a list of the experiment images as numpy arrays.
+
+        Raises
+        ------
+        NotImplementedError
+            If this is not an image dataset.
+
         """
-        # TODO
-        return None
+        if not self._contains_images:
+            raise NotImplementedError("This is not an image dataset!")
+        n = self.metadata['n_observations']
+        images = []
+        for i in range(n):
+            path_to_image = pathlib.Path(self._images_dir, f'image_{i+1}.jpeg')
+            images.append(
+                np.array(Image.open(path_to_image))
+            )
+        return images
+
+    @property
+    def image_iterator(self):
+        """
+        Return an iterator over the experiment images, which are numpy
+        arrays of dimension (height, width, 3). Images are loaded
+        lazily from disk only when requested.
+
+        Returns
+        ------
+        numpy.ndarray
+            Each image as a numpy array.
+
+        Raises
+        ------
+        NotImplementedError
+            If this is not an image dataset.
+
+        """
+        if not self._contains_images:
+            raise NotImplementedError("This is not an image dataset!")
+
+        n = self.metadata['n_observations']
+        for i in range(n):
+            path_to_image = pathlib.Path(self._images_dir, f'image_{i+1}.jpeg')
+            yield np.array(Image.open(path_to_image))
 
 
 # --------------------------------------------------------------------
