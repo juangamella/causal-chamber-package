@@ -132,7 +132,11 @@ class TestAPIInitialization(unittest.TestCase):
 
 # Check that wrong credentials raise a UserError(401, ...)
 
-# Check that wrong chamber_id raises a UserError(403, ...)
+# Submit a valid experiment
+
+#   should appear in get_experiments
+
+# Test that get_queue shows the right experiments
 
 # Try calling dataset.image_arrays on a non-image dataset -> should raise NotImplementedError
 
@@ -141,5 +145,4 @@ class TestAPIInitialization(unittest.TestCase):
 # Calling dataset.image_arrays on an image dataset -> should return the image list of length == len(dataset.dataframe)
 
 # Iterating over dataset.image_iterator should yield exactly the same images as return in dataset.image_arrays (compare using np.all())
-
 

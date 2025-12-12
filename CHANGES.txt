@@ -1,5 +1,7 @@
 v0.2.2, 2025-12-??
 -- API credentials can now be passed directly as a tuple
+-- New methods: Given a downloaded dataset `data`, its images can now be accessed by calling `data.image_iterator` and `data.images_array`
+-- New method: rlab.get_queue(`<chamber_id>`) prints the experiments currently in the queue for that chamber, incl. the user to whom they belong.
 v0.2.1, 2025-11-03
 -- allow suppressing stdout outputs (ie., tqdm) in rlab.download_data with verbose=False
 -- print code commit in lab.Chamber
