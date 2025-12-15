@@ -119,15 +119,15 @@ You can monitor the status of the experiment by calling
 rlab.get_experiments(print_max=1)
 ```
 
-which produces a table with your experiments and their status:
+which prints a table with your experiments and their status:
 
 ![](examples/package_printout_example.jpg)
 
-Once the experiment's status is `'DONE'`, you can download the data, load it as a pandas Dataframe
+Once the experiment's status is `DONE`, you can download the data
 
 ```Python
 dataset = rlab.download_data(experiment_id, root='/tmp')
-observations = dataset.dataframe
+observations = dataset.dataframe # Load data as pandas dataframe
 ```
 
 and plot the results
