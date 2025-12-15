@@ -121,7 +121,7 @@ rlab.get_experiments(print_max=1)
 
 which produces a table with your experiments and their status:
 
-![](examples/package_printout_example.jpeg)
+![](examples/package_printout_example.jpg)
 
 Once the experiment's status is `'DONE'`, you can download the data, load it as a pandas Dataframe
 
