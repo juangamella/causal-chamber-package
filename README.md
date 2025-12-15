@@ -10,7 +10,7 @@
 The `causalchamber` package provides different functionality for the [Causal Chambers](https://causalchamber.ai):
 
 - **[Remote API](#remote-api)**: a Python interface to remotely access our pool of chambers and run your own experiments.
-- **[Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
+- **[Open-source Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
 - **[Simulators](#simulators)**: run simulators and mechanistic models of different chamber phenomena.
 - **[Ground truth](#ground-truth)**: load the ground-truth causal graphs and other information for each chamber.
 
@@ -26,9 +26,11 @@ in an appropriate shell.
 
 ## Remote API
 
-We are currently building the API to remotely control the chambers and run your own experiments.
+> You can request to the API [here](https://tally.so/r/wbNe0e).
 
-> You can request access to the API [here](https://tally.so/r/wbNe0e).
+### Connecting to a chamber in real-time
+
+### Submitting a job to the chamber queue
 
 ## Open-source Datasets
 
