@@ -44,7 +44,7 @@ chamber = lab.Chamber(chamber_id = 'lt-demo-x81a',
                       config = 'camera_fast',
                       credentials_file = '.credentials')
 
-# Turn on the light source and take one measurement + image
+# Turn on the light source and take one image
 chamber.set('red', 255)
 df, images = chamber.measure(n=1)
 
@@ -72,7 +72,7 @@ batch.measure(n=1) # Image 2: purple
 batch.set('pol_1', 90)
 batch.measure(n=1) # Image 3: crossed polarizers
 
-# Submit them and receive the data
+# Submit the batch and receive the data
 df, images = batch.submit()
 
 # Plot the images
