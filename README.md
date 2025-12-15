@@ -37,31 +37,12 @@ Let's connect to a Light Tunnel Mk2. and ask it to load its `camera_fast` [confi
 ```Python
 import causalchamber.lab as lab
 
+# Open a real-time connection
 chamber = lab.Chamber(chamber_id = 'lt-demo-x81a',
                       config='camera_fast',
                       credentials_file = '.credentials')
-```
-Output:
-```
-Contacting chamber lt-demo-x81a
-  Resetting & verifying hardware (config: full)
-  Done. (4.75 seconds)
 
-    Causal Chamber™ lt-demo-x81a
-  ---------------------------------
-       chamber_id : lt-demo-x81a
-            model : Light Tunnel Mk2
-    configuration : camera_fast
-          version : 1.2
-       session_id : eb142cf4-6927-49f0-a439-699d2a900991
-         endpoint : https://api.causalchamber.ai/v0
-    documentation : http://box.causalchamber.ai/config_doc_wt_mk2_full.pdf
- codebase_version : cd9777e745f312fb11a4345ba7c1291d9fc4c7fb
-```
-
-the `chamber` variable now holds a real-time connection to the chamber. We can use it to send instructions and collect data. For example, let's turn on the red channel of the light source and take an image:
-
-```Python
+# Turn on red light source and take one measurement + image
 chamber.set('red', 255)
 df, images = chamber.measure(n=1)
 
@@ -69,8 +50,6 @@ df, images = chamber.measure(n=1)
 import matplotlib.pyplot as plt
 plt.imshow(images[0])
 ```
-
-Output:
 
 You can also submit several instructions at once:
 
@@ -96,7 +75,7 @@ for i,im in enumerate(images):
     plt.imshow(im)
 ```
 
-Which produces the following output
+You can find a full description of the chamber configuration and its variables can be found [here](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf).
 
 
 ### Submitting a job to the chamber queue
