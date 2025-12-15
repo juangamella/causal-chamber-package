@@ -26,13 +26,11 @@ in an appropriate shell.
 
 ## Remote API
 
-> You can request access to the API [here](https://forms.causalchamber.ai/lab).
-
 You can use our API to collect your own data from the chambers and run experiments in real time.
 
-### Connecting to a chamber in real-time
+> You can request access to the API [here](https://forms.causalchamber.ai/lab).
 
-> Complete tutorial notebook: 
+### Connecting to a chamber in real-time
 
 Let's connect to a Light Tunnel Mk2. and ask it to load its `camera_fast` [configuration](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) so we can collect images.
 
@@ -55,7 +53,7 @@ plt.imshow(images[0])
 
 Outptut:
 
-![Single image collected from the Light Tunnel](examples/package_rt_sample_image.png)
+<img src="examples/package_rt_sample_image.png" width="400" height="400">
 
 
 You can also submit several instructions at once:
@@ -86,8 +84,7 @@ Outptut:
 
 ![Images collected from the Light Tunnel through a single batch](examples/package_rt_sample_images.png)
 
-You can find a full description of the chamber configuration and its variables can be found [here](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf).
-
+You can find a full description of this chamber configuration and its variables [here](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf).
 
 ### Submitting a job to the chamber queue
 
