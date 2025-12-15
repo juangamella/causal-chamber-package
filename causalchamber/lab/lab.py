@@ -349,6 +349,7 @@ class Protocol(Batch):
         api : lab.api.API
             The API client instance used for making requests.
         """
+        # We purposefully overwrite the init method of lab.chamber.Batch
         self._chamber_id = chamber_id
         self._config = config
         self._API = api
@@ -452,11 +453,11 @@ class ExperimentDataset():
         ------
         FileNotFoundError
             If the root directory does not exist.
-
         """
+        self._experiment_id = experiment_id
         self._download_url = download_url
         self._checksum = checksum
-        self._root = root# pathlib.Path(root).resolve()
+        self._root = pathlib.Path(root).resolve()
         if not os.path.isdir(self._root):
             raise FileNotFoundError(f"root directory '{self._root}' not found. Please check and try again.")
         # Download, verify and extract
@@ -479,6 +480,18 @@ class ExperimentDataset():
             self._contains_images = True
 
     @property
+    def experiment_id(self):
+        """
+        Return the experiment_id of this dataset.
+
+        Returns
+        -------
+        str
+            The experiment id.        
+        """
+        return self._experiment_id
+            
+    @property
     def dataframe(self):
         """
         Get the experimental observations as a DataFrame.
@@ -496,12 +509,6 @@ class ExperimentDataset():
         Load the experiment images from disk into a list of numpy.ndarray with dimensions (height, width, 3).
 
         For lazy loading, use image_iterator instead.
-
-        Parameters
-        ----------
-        verbose : bool, optional
-            If a progress bar should be shown as the images are
-            loaded. Default is False.
         
         Returns
         -------

@@ -205,6 +205,15 @@ class TestSubmissionAndDownload(unittest.TestCase):
         self.assertEqual(status, 'DONE', f"Experiment did not complete in {max_wait} seconds")
         
         # Step 9: Download the data and load the dataframe
+
+        # Calling with a non-existent root directory should raise an error
+        with self.assertRaises(FileNotFoundError) as context:
+            dataset = self.rlab.download_data(
+                experiment_id,
+                root='/non/existent/directory/123',
+                verbose=False
+            )
+        # Call with the appropriate root directory
         dataset = self.rlab.download_data(
             experiment_id,
             root=self.temp_dir,
