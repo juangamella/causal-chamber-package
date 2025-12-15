@@ -53,7 +53,7 @@ plt.imshow(images[0])
 
 Outptut:
 
-<img src="examples/package_rt_sample_image.png" width="220" height="220">
+<img src="examples/package_rt_sample_image.png" width="300" height="300">
 
 
 You can also submit several instructions at once:
