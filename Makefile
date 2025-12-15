@@ -23,7 +23,7 @@
 SUITE = all
 
 # Run tests
-tests: examples doctests simulator-tutorials test-downloads
+tests: examples doctests simulator-tutorials test-downloads unit-tests
 
 test-downloads:
 	python -m unittest causalchamber.test.test_downloads
@@ -39,7 +39,9 @@ doctests:
 
 # Run the examples from the README
 examples:
-	python examples.py
+	# PYTHONPATH=./ python examples/example_readme_queue.py
+	# PYTHONPATH=./ python examples/example_readme_rt.py
+	PYTHONPATH=./ python examples/examples_readme_datasets_gt_models.py
 
 # Run the sctipts for the simulator tutorials
 simulator-tutorials:
@@ -48,14 +50,15 @@ simulator-tutorials:
 	make test-scripts; \
     )
 
-# Copyright (C) Causal Chamber GmbH - All Rights Reserved
-# Unauthorized copying of this file, via any medium is strictly prohibited
-# Proprietary and confidential
-# Written by Juan L. Gamella <juan@causalchamber.ai>
+# Run the unit tests
 
-.PHONY: serve, venv, venv_test, SUITE, test, tests, doctests, clean, init_db
+unit-tests:
+ifeq ($(SUITE),all)
+	python -m unittest discover causalchamber.lab.test
+else
+	python -m unittest $(SUITE)
+endif
 
-SUITE = all
 
 # Make a virtual environment with the package's dependencies
 venv:
@@ -63,7 +66,7 @@ venv:
 	( \
 	. venv/bin/activate; \
 	pip install --upgrade pip setuptools; \
-	pip install numpy pandas requests pyyaml Pillow tqdm \
+	pip install numpy pandas requests pyyaml termcolor Pillow tqdm \
 	)
 
 

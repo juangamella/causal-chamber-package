@@ -70,7 +70,7 @@ class Chamber():
         Verbosity level for output messages.
     """
     
-    def __init__(self, chamber_id, config, credentials_file, endpoint="https://api.causalchamber.ai/v0", verbose=1):
+    def __init__(self, chamber_id, config, credentials_file=None, endpoint="https://api.causalchamber.ai/v0", verbose=1, credentials=None):
         """Start a new real-time connection to the specified chamber,
         returning a lab.Chamber instance to control it.
         
@@ -84,7 +84,7 @@ class Chamber():
             The unique chamber identifier.
         config : str
             Desired configuration of the chamber.
-        credentials_file : str
+        credentials_file : str or None, optional
             Path to the configuration file containing API
             credentials. The file should contain the following lines:
             ```
@@ -92,16 +92,24 @@ class Chamber():
             user = <YOUR USERNAME>
             password = <YOUR PASSWORD>
             ```
+            Either credentials or credentials_file must be
+            provided. If both are, credentials is used.
         endpoint : str or None, optional
             Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
         verbose : int, optional
             Verbosity level for status messages. 0 for silent, 1 for normal
             output (default is 1).
+        credentials : tuple of string or None, optional        
+            A tuple (<user>, <password>) with the user and password
+            for the API. Either credentials or credentials_file
+            must be provided. If both are, credentials is used.
         
         Raises
         ------
         FileNotFoundError
             If the credentials file does not exist at the specified path.
+        ValueError
+            If neither credentials nor credentials_file is provided.
         UserError
             If credentials are incorrect, or the requested chamber or
             configuration do not exist.        
@@ -116,7 +124,9 @@ class Chamber():
         self._verbose = verbose
 
         # Load credentials
-        self._API = API(credentials_file, endpoint)
+        self._API = API(credentials_file = credentials_file,
+                        endpoint = endpoint,
+                        credentials = credentials)
 
         # Start a session
         if self.verbose:
@@ -424,7 +434,7 @@ class Batch():
         """
         self._chamber = chamber
         self._instructions = []
-
+        
     @property
     def instructions(self):
         """
@@ -577,6 +587,59 @@ class Batch():
         """
         return self.measure(n, delay)
 
+    def from_df(self, dataframe, n=1, delay=0):
+        """Load instructions from a pandas dataframe.
+
+        For each row in the DataFrame, insert one
+        'SET,<target>,<value>' instruction per column, where <target>
+        is the name of the column and <value> is its entry in that
+        row. After all the SET instructions for a row, insert a
+        'MSR,n,delay' instruction.
+
+        See the example below.
+
+        Parameters
+        ----------
+        dataframe : pd.DataFrame
+            DataFrame where each column represents a target variable and each row
+            represents a set of values to configure before measurement.
+        n : int, optional
+            Number of measurements to perform after setting each row's values.
+            Default is 1.
+        delay : float, optional
+            Delay (in seconds or appropriate units) between setting values and
+            measuring. Default is 0.
+
+        Returns
+        -------
+        None
+
+        Examples
+        --------
+        >>> batch = Batch(None)
+        >>> df = pd.DataFrame({
+        ...     'red': [1.0, 2.0],
+        ...     'blue': [0.1, 0.2]
+        ... })
+        >>> batch.from_df(df, n=5, delay=10)
+        >>> batch.instructions
+        ['SET,red,1.0', 'SET,blue,0.1', 'MSR,5,10', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,5,10']
+        >>> batch.clear()
+
+        >>> batch.from_df(df)
+        >>> batch.instructions
+        ['SET,red,1.0', 'SET,blue,0.1', 'MSR,1,0', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,1,0']
+
+        """
+        targets = dataframe.columns
+        for _, row in dataframe.iterrows():
+            # Add SET instructions
+            for target in dataframe.columns:
+                self.set(target, row[target])
+            # Add MSR instruction
+            self.measure(n = n, delay=delay)
+        return None
+    
     def clear(self):
         """
         Clears the list of instructions in the batch.x        

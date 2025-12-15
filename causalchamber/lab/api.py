@@ -54,9 +54,8 @@ class API():
         Base URL for the API endpoint.
     """
 
-    def __init__(self, credentials_file, endpoint='https://api.causalchamber.ai/v0'):
-        """
-        Initialize the API client with credentials and endpoint.
+    def __init__(self, credentials_file=None, endpoint='https://api.causalchamber.ai/v0', credentials=None):
+        """Initialize the API client with credentials and endpoint.
         
         Reads authentication credentials from a configuration file and sets up
         the API client with the specified endpoint URL. Also initializes an
@@ -64,8 +63,7 @@ class API():
         
         Parameters
         ----------
-        credentials_file : str
-
+        credentials_file : str or None, optional
             Path to the configuration file containing API
             credentials. The file should contain the following lines:
             ```
@@ -73,9 +71,15 @@ class API():
             user = <YOUR USERNAME>
             password = <YOUR PASSWORD>
             ```
+            Either credentials or credentials_file must be
+            provided. If both are, credentials is used.
         endpoint : str, optional
             Base URL for the API endpoint. Default is 
             'https://api.causalchamber.ai/v0'.
+        credentials : tuple of string or None, optional        
+            A tuple (<user>, <password>) with the user and password
+            for the API. Either credentials or credentials_file
+            must be provided. If both are, credentials is used.
         
         Raises
         ------
@@ -84,6 +88,8 @@ class API():
             section or 'user' and 'password' fields.
         FileNotFoundError
             If the credentials file does not exist at the specified path.
+        ValueError
+            If neither credentials nor credentials_file is provided.
         
         Examples
         --------
@@ -109,21 +115,49 @@ class API():
         Traceback (most recent call last):
         ...
         FileNotFoundError: No credentials file found at the path you provided...
+
+        New tests for credentials parameter (v0.2.2)
+        >>> api = API()
+        Traceback (most recent call last):
+        ...
+        ValueError: Either credentials_file or credentials must be provided.
+
+        >>> api = API('credentials_example.ini')
+        >>> api._api_user, api._api_password
+        ('<YOUR USERNAME>', '<YOUR PASSWORD>')
+
+        >>> api = API(credentials = ('username', 'password'))
+        >>> api._api_user, api._api_password
+        ('username', 'password')
+
+        >>> api = API('credentials_example.ini', credentials = ('username', 'password'))
+        >>> api._api_user, api._api_password
+        ('username', 'password')
+
+        >>> api = API(credentials_file = 'credentials_example.ini', credentials = ('username', 'password'))
+        >>> api._api_user, api._api_password
+        ('username', 'password')
         """        
         self._stats_timing = {}  # timing dictionary
         self._endpoint = endpoint
-        # Read credentials file
-        if not os.path.exists(credentials_file):
-            raise FileNotFoundError(f"No credentials file found at the path you provided: '{credentials_file}'")
-        credentials = configparser.ConfigParser()
-        try:
-            credentials.read(credentials_file)
-            self._api_user = credentials['api_keys']['user']
-            self._api_password = credentials['api_keys']['password']
-        except KeyError as e:
-            raise UserError(0, f"Could not find entry '{e.args[0]}' in credentials file at '{credentials_file}'. Check your credentials file and try again.")
-        except configparser.MissingSectionHeaderError:
-            raise UserError(0, f"Could not find header '[api_keys]' in credentials file at '{credentials_file}'. Check your credentials file and try again.")
+        if credentials is not None:
+            self._api_user = credentials[0]
+            self._api_password = credentials[1]
+        elif credentials_file is not None:
+            # Read credentials file
+            if not os.path.exists(credentials_file):
+                raise FileNotFoundError(f"No credentials file found at the path you provided: '{credentials_file}'")
+            credentials = configparser.ConfigParser()
+            try:
+                credentials.read(credentials_file)
+                self._api_user = credentials['api_keys']['user']
+                self._api_password = credentials['api_keys']['password']
+            except KeyError as e:
+                raise UserError(0, f"Could not find entry '{e.args[0]}' in credentials file at '{credentials_file}'. Check your credentials file and try again.")
+            except configparser.MissingSectionHeaderError:
+                raise UserError(0, f"Could not find header '[api_keys]' in credentials file at '{credentials_file}'. Check your credentials file and try again.")
+        else:
+            raise ValueError("Either credentials_file or credentials must be provided.")
 
     @property
     def user_id(self):
