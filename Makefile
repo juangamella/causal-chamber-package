@@ -39,7 +39,7 @@ doctests:
 
 # Run the examples from the README
 examples:
-	python examples.py
+	python examples/examples.py
 
 # Run the sctipts for the simulator tutorials
 simulator-tutorials:

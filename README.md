@@ -10,25 +10,13 @@
 The `causalchamber` package provides different functionality for the [Causal Chambers](https://causalchamber.ai):
 
 - **[Remote API](#remote-api)**: a Python interface to remotely access our pool of chambers and run your own experiments.
-- **[Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
-- **[Simulators](#simulators)**: run simulators and mechanistic models of different chamber phenomena.
+- **[Open-source Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
+- **[Simulators](#simulators)**: Python simulators and mechanistic models of different chamber phenomena.
 - **[Ground truth](#ground-truth)**: load the ground-truth causal graphs and other information for each chamber.
-
-If you use this package for your scientific work, please consider citing:
-
-```
-﻿@article{gamella2025chamber,
-  author={Gamella, Juan L. and Peters, Jonas and B{\"u}hlmann, Peter},
-  title={Causal chambers as a real-world physical testbed for {AI} methodology},
-  journal={Nature Machine Intelligence},
-  doi={10.1038/s42256-024-00964-x},
-  year={2025},
-}
-```
 
 ## Install
 
-You can install the package via pip, i.e. by typing
+You can install the package via pip, i.e., by typing
 
 ```
 pip install causalchamber
@@ -38,11 +26,118 @@ in an appropriate shell.
 
 ## Remote API
 
-We are currently building the API to remotely control the chambers and run your own experiments.
+You can use our API to collect your own data from the chambers and run experiments in real time.
 
-> You can request access to the API [here](https://tally.so/r/wbNe0e).
+> You can request access to the API [here](https://forms.causalchamber.ai/lab).
 
-## Datasets
+### Connecting to a chamber in real-time
+
+You can open a real-time connection to a chamber and use it to send instructions and collect data. This is particularly suited for online learning settings or to test active learning, experiment design or control algorithms. To collect static datasets from long-running experiments, we recommend using the [queue](#submitting-a-job-to-the-chamber-queue) instead.
+
+As an example, let's connect to a [Light Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) and collect some images in real time.
+
+```Python
+import causalchamber.lab as lab
+
+# Open a real-time connection
+chamber = lab.Chamber(chamber_id = 'lt-demo-x81a',
+                      config = 'camera_fast',
+                      credentials_file = '.credentials')
+
+# Turn on the light source and take one measurement + image
+chamber.set('red', 255)
+df, images = chamber.measure(n=1)
+
+# Plot the image
+import matplotlib.pyplot as plt
+plt.imshow(images[0])
+```
+
+Outptut:
+
+<img src="examples/package_rt_sample_image.png" width="300" height="300">
+
+
+You can also submit several instructions at once using a batch:
+
+```Python
+# Start a new batch
+batch = chamber.new_batch()
+
+# Add instructions
+batch.set('red', 128)
+batch.measure(n=1) # Image 1: red
+batch.set('blue', 128)
+batch.measure(n=1) # Image 2: purple
+batch.set('pol_1', 90)
+batch.measure(n=1) # Image 3: crossed polarizers
+
+# Submit them and receive the data
+df, images = batch.submit()
+
+# Plot the images
+plt.figure(figsize=(9,3))
+for i,im in enumerate(images):
+    plt.subplot(1,3,i+1)
+    plt.imshow(im)
+```
+
+Outptut:
+
+![Images collected from the Light Tunnel through a single batch](examples/package_rt_sample_images.png)
+
+### Submitting a job to the chamber queue
+
+We recommend using the queue for long-running experiments where no interaction is needed.
+
+It works like a compute cluster: you submit an experiment protocol to the queue, the chamber runs it when ready, and it uploads the data to a server for you to download.
+
+As an example, let's submit a simple experiment where we quickly toggle the intake fan of the [Wind Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_wt_mk2_full.pdf) and observe the resulting dynamics.
+
+```Python
+# Connect to the Remote Lab
+rlab = lab.Lab(credentials_file = '.credentials')
+
+# Start a new protocol
+experiment = rlab.new_experiment(chamber_id = 'wt-demo-ch4lu', config ='full')
+
+# Add instructions to the protocol
+experiment.wait(7_000) # Wait 7s for fan speed to stabilize after reset
+experiment.measure(n=80) # Measure base state
+experiment.set('load_in', 1.0) # Turn intake fan to max
+experiment.measure(n=20) # Measure impulse state
+experiment.set('load_in', 0.01) # Idle intake fan
+experiment.measure(n=80) # Measure base state
+    
+# Submit the experiment
+experiment_id = experiment.submit(tag='demo-queue')
+```
+
+You can monitor the status of the experiment by calling
+
+```Python
+rlab.get_experiments(print_max=1)
+```
+
+which prints a table with your experiments and their status:
+
+![](examples/package_printout_example.jpg)
+
+Once the experiment's status is `DONE`, you can download the data
+
+```Python
+dataset = rlab.download_data(experiment_id, root='/tmp')
+observations = dataset.dataframe # Load data as pandas dataframe
+```
+
+and plot the results
+```Python
+from examples.plotting import plot_wt
+plot_wt(observations)
+```
+![Images collected from the Light Tunnel through a single batch](examples/package_queue_plots.png)
+
+## Open-source Datasets
 
 You can download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code. For example, you can load the [`lt_camera_test_v1`](https://github.com/juangamella/causal-chamber/tree/main/datasets/lt_camera_test_v1) image dataset as follows:
 
@@ -121,6 +216,20 @@ If you encounter a bug, need help using the package, or want to leave us some (h
 ## License
 
 The code in this repository is shared under the permissive [MIT license](https://opensource.org/license/mit/). A copy of can be found in [LICENSE.txt](LICENSE.txt).
+
+## Citation
+
+If you use this package for your scientific work, please consider citing:
+
+```
+﻿@article{gamella2025chamber,
+  author={Gamella, Juan L. and Peters, Jonas and B{\"u}hlmann, Peter},
+  title={Causal chambers as a real-world physical testbed for {AI} methodology},
+  journal={Nature Machine Intelligence},
+  doi={10.1038/s42256-024-00964-x},
+  year={2025},
+}
+```
 
 ## Contributing
 
