@@ -20,6 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import time
+
 """
 README example code for queue mode:
 """
@@ -44,22 +46,20 @@ experiment.measure(n=80) # Measure base state
 # Submit the experiment
 experiment_id = experiment.submit(tag='demo-queue')
 
-# You can monitor the status of the experiment
+# You can monitor the status of the experiment 
 rlab.get_experiments(print_max=1)
 
-#   Status    Tag   Experiment ID                          Chamber ID      Config   Submitted On                    
-# ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-#   RUNNING         27d733f7-bec1-4202-8179-253dd63fef66   wt-demo-ch4lu   full     Mon, Dec 15, 2025 16:39:48 CET  
-
-#   --- showing 1 / 1803 experiments ---
-# ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-#  Date/time in your machine's local timezone — current time = Mon, Dec 15, 2025 16:40:06 CET
-
 # Once status is 'DONE' you can download the data:
+
+print(f"Waiting for experiment {experiment_id} to finish")
+while rlab.get_experiment(experiment_id)['status'] != 'DONE':
+    time.sleep(2)
+    print(".", end="")
+print()
 
 dataset = rlab.download_data(experiment_id, root='/tmp')
 observations = dataset.dataframe
 
-from examples.plotting import plot_wt
-plot_wt(observations)
+# from examples.plotting import plot_wt
+# plot_wt(observations)
 

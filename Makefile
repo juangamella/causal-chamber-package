@@ -39,7 +39,9 @@ doctests:
 
 # Run the examples from the README
 examples:
-	python examples/examples.py
+	# PYTHONPATH=./ python examples/example_readme_queue.py
+	# PYTHONPATH=./ python examples/example_readme_rt.py
+	PYTHONPATH=./ python examples/examples_readme_datasets_gt_models.py
 
 # Run the sctipts for the simulator tutorials
 simulator-tutorials:
