@@ -32,9 +32,9 @@ You can use our API to collect your own data from the chambers and run experimen
 
 ### Connecting to a chamber in real-time
 
-You can open a real-time connections to a chamber and use to send instructions and collect data. This is particularly suited to online learning applications or any sort of active learning, experiment design or control. To collect static datasets from long-running experiments, we recommend [queue access](#submitting-a-job-to-the-chamber-queue) below.
+You can open a real-time connection to a chamber and use it to send instructions and collect data. This is particularly suited to test online learning applications or to test active learning, experiment design or control algorithms. To collect static datasets from long-running experiments, we recommend using the [queue](#submitting-a-job-to-the-chamber-queue) instead.
 
-As an example, let's connect to a Light Tunnel Mk2. and ask it to load its `camera_fast` [configuration](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) so we can collect images.
+As an example, let's connect to a [Light Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) and collect some images in real time.
 
 ```Python
 import causalchamber.lab as lab
@@ -44,7 +44,7 @@ chamber = lab.Chamber(chamber_id = 'lt-demo-x81a',
                       config='camera_fast',
                       credentials_file = '.credentials')
 
-# Turn on red light source and take one measurement + image
+# Turn on the light source and take one measurement + image
 chamber.set('red', 255)
 df, images = chamber.measure(n=1)
 
@@ -90,7 +90,7 @@ Outptut:
 
 We recommend using the queue for long-running experiments where no interaction is needed.
 
-It works like a compute cluster: you submit an experiment protocol to the queue, the chamber runs your experiment when ready, and it uploads the data to a server for you to download.
+It works like a compute cluster: you submit an experiment protocol to the queue, the chamber runs it when ready, and it uploads the data to a server for you to download.
 
 As an example, let's submit a simple experiment where we quickly toggle the intake fan of the [Wind Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_wt_mk2_full.pdf) and observe the resulting dynamics.
 
@@ -118,14 +118,18 @@ You can monitor the status of the experiment by calling
 ```Python
 rlab.get_experiments(print_max=1)
 ```
-which produces a table with all your experiments:
 
-Once the experiment's status is `'DONE'`, you can download the data
+which produces a table with your experiments and their status:
+
+![](examples/package_printout_example.jpeg)
+
+Once the experiment's status is `'DONE'`, you can download the data, load it as a pandas Dataframe
 
 ```Python
 dataset = rlab.download_data(experiment_id, root='/tmp')
 observations = dataset.dataframe
 ```
+
 and plot the results
 ```Python
 from examples.plotting import plot_wt
