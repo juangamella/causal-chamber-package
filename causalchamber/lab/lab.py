@@ -412,7 +412,7 @@ class Protocol(Batch):
                 'chamber_config': self._config,
                 'instructions': self._instructions}
         if tag is not None and not isinstance(tag, str):
-            raise TypeError(f"tag must be str, not {type(user_id).__name__}")
+            raise TypeError(f"tag must be str, not {type(tag).__name__}")
         elif tag is not None:
             body['tag'] = tag
         response = self._API.make_request('POST', 'experiments', body)
@@ -547,9 +547,13 @@ class ExperimentDataset():
             raise NotImplementedError("This is not an image dataset!")
 
         n = self.metadata['n_observations']
-        for i in range(n):
-            path_to_image = pathlib.Path(self._images_dir, f'image_{i+1}.jpeg')
-            yield np.array(Image.open(path_to_image))
+        
+        def _generate():
+            for i in range(n):
+                path_to_image = pathlib.Path(self._images_dir, f'image_{i+1}.jpeg')
+                yield np.array(Image.open(path_to_image))
+
+        return _generate()
 
 
 # --------------------------------------------------------------------
