@@ -13,9 +13,9 @@ readme = "pypi_README.md"
 requires-python = ">=3.6"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+license = "MIT"
 dependencies = [
     "numpy>=1.18.0",
     "pandas>=1.2.1",
