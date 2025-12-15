@@ -32,7 +32,7 @@ You can use our API to collect your own data from the chambers and run experimen
 
 ### Connecting to a chamber in real-time
 
-You can open a real-time connection to a chamber and use it to send instructions and collect data. This is particularly suited to test online learning applications or to test active learning, experiment design or control algorithms. To collect static datasets from long-running experiments, we recommend using the [queue](#submitting-a-job-to-the-chamber-queue) instead.
+You can open a real-time connection to a chamber and use it to send instructions and collect data. This is particularly suited for online learning settings or to test active learning, experiment design or control algorithms. To collect static datasets from long-running experiments, we recommend using the [queue](#submitting-a-job-to-the-chamber-queue) instead.
 
 As an example, let's connect to a [Light Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) and collect some images in real time.
 
@@ -41,7 +41,7 @@ import causalchamber.lab as lab
 
 # Open a real-time connection
 chamber = lab.Chamber(chamber_id = 'lt-demo-x81a',
-                      config='camera_fast',
+                      config = 'camera_fast',
                       credentials_file = '.credentials')
 
 # Turn on the light source and take one measurement + image
@@ -66,11 +66,11 @@ batch = chamber.new_batch()
 
 # Add instructions
 batch.set('red', 128)
-batch.measure(n=1)
+batch.measure(n=1) # Image 1: red
 batch.set('blue', 128)
-batch.measure(n=1)
+batch.measure(n=1) # Image 2: purple
 batch.set('pol_1', 90)
-batch.measure(n=1)
+batch.measure(n=1) # Image 3: crossed polarizers
 
 # Submit them and receive the data
 df, images = batch.submit()
