@@ -32,7 +32,9 @@ You can use our API to collect your own data from the chambers and run experimen
 
 ### Connecting to a chamber in real-time
 
-Let's connect to a Light Tunnel Mk2. and ask it to load its `camera_fast` [configuration](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) so we can collect images.
+You can open a real-time connections to a chamber and use to send instructions and collect data. This is particularly suited to online learning applications or any sort of active learning, experiment design or control. To collect static datasets from long-running experiments, we recommend [queue access](#submitting-a-job-to-the-chamber-queue) below.
+
+As an example, let's connect to a Light Tunnel Mk2. and ask it to load its `camera_fast` [configuration](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) so we can collect images.
 
 ```Python
 import causalchamber.lab as lab
@@ -56,7 +58,7 @@ Outptut:
 <img src="examples/package_rt_sample_image.png" width="300" height="300">
 
 
-You can also submit several instructions at once:
+You can also submit several instructions at once using a batch:
 
 ```Python
 # Start a new batch
@@ -84,9 +86,52 @@ Outptut:
 
 ![Images collected from the Light Tunnel through a single batch](examples/package_rt_sample_images.png)
 
-You can find a full description of this chamber configuration and its variables [here](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf).
-
 ### Submitting a job to the chamber queue
+
+We recommend using the queue for long-running experiments where no interaction is needed.
+
+It works like a compute cluster: you submit an experiment protocol to the queue, the chamber runs your experiment when ready, and it uploads the data to a server for you to download.
+
+As an example, let's submit a simple experiment where we quickly toggle the intake fan of the [Wind Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_wt_mk2_full.pdf) and observe the resulting dynamics.
+
+```Python
+# Connect to the Remote Lab
+rlab = lab.Lab(credentials_file = '.credentials')
+
+# Start a new protocol
+experiment = rlab.new_experiment(chamber_id = 'wt-demo-ch4lu', config ='full')
+
+# Add instructions to the protocol
+experiment.wait(7_000) # Wait 7s for fan speed to stabilize after reset
+experiment.measure(n=80) # Measure base state
+experiment.set('load_in', 1.0) # Turn intake fan to max
+experiment.measure(n=20) # Measure impulse state
+experiment.set('load_in', 0.01) # Idle intake fan
+experiment.measure(n=80) # Measure base state
+    
+# Submit the experiment
+experiment_id = experiment.submit(tag='demo-queue')
+```
+
+You can monitor the status of the experiment by calling
+
+```Python
+rlab.get_experiments(print_max=1)
+```
+which produces a table with all your experiments:
+
+Once the experiment's status is `'DONE'`, you can download the data
+
+```Python
+dataset = rlab.download_data(experiment_id, root='/tmp')
+observations = dataset.dataframe
+```
+and plot the results
+```Python
+from examples.plotting import plot_wt
+plot_wt(observations)
+```
+![Images collected from the Light Tunnel through a single batch](examples/package_queue_plots.png)
 
 ## Open-source Datasets
 
