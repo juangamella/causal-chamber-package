@@ -26,9 +26,78 @@ in an appropriate shell.
 
 ## Remote API
 
-> You can request to the API [here](https://tally.so/r/wbNe0e).
+> You can request access to the API [here](https://forms.causalchamber.ai/lab).
 
 ### Connecting to a chamber in real-time
+
+> Complete tutorial notebook: 
+
+Let's connect to a Light Tunnel Mk2. and ask it to load its `camera_fast` [configuration](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) so we can collect images.
+
+```Python
+import causalchamber.lab as lab
+
+chamber = lab.Chamber(chamber_id = 'lt-demo-x81a',
+                      config='camera_fast',
+                      credentials_file = '.credentials')
+```
+Output:
+```
+Contacting chamber lt-demo-x81a
+  Resetting & verifying hardware (config: full)
+  Done. (4.75 seconds)
+
+    Causal Chamber™ lt-demo-x81a
+  ---------------------------------
+       chamber_id : lt-demo-x81a
+            model : Light Tunnel Mk2
+    configuration : camera_fast
+          version : 1.2
+       session_id : eb142cf4-6927-49f0-a439-699d2a900991
+         endpoint : https://api.causalchamber.ai/v0
+    documentation : http://box.causalchamber.ai/config_doc_wt_mk2_full.pdf
+ codebase_version : cd9777e745f312fb11a4345ba7c1291d9fc4c7fb
+```
+
+the `chamber` variable now holds a real-time connection to the chamber. We can use it to send instructions and collect data. For example, let's turn on the red channel of the light source and take an image:
+
+```Python
+chamber.set('red', 255)
+df, images = chamber.measure(n=1)
+
+# Plot the image
+import matplotlib.pyplot as plt
+plt.imshow(images[0])
+```
+
+Output:
+
+You can also submit several instructions at once:
+
+```Python
+# Start a new batch
+batch = chamber.new_batch()
+
+# Add instructions
+batch.set('red', 255)
+batch.measure(n=1)
+batch.set('blue', 123)
+batch.measure(n=1)
+batch.set('pol_1', 90)
+batch.measure(n=1)
+
+# Submit them and receive the data
+df, images = batch.submit()
+
+# Plot the images
+plt.figure(figsize=(9,3))
+for i,im in enumerate(images):
+    plt.subplot(3,1,i+1)
+    plt.imshow(im)
+```
+
+Which produces the following output
+
 
 ### Submitting a job to the chamber queue
 
