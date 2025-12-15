@@ -14,18 +14,6 @@ The `causalchamber` package provides different functionality for the [Causal Cha
 - **[Simulators](#simulators)**: run simulators and mechanistic models of different chamber phenomena.
 - **[Ground truth](#ground-truth)**: load the ground-truth causal graphs and other information for each chamber.
 
-If you use this package for your scientific work, please consider citing:
-
-```
-﻿@article{gamella2025chamber,
-  author={Gamella, Juan L. and Peters, Jonas and B{\"u}hlmann, Peter},
-  title={Causal chambers as a real-world physical testbed for {AI} methodology},
-  journal={Nature Machine Intelligence},
-  doi={10.1038/s42256-024-00964-x},
-  year={2025},
-}
-```
-
 ## Install
 
 You can install the package via pip, i.e. by typing
@@ -42,7 +30,7 @@ We are currently building the API to remotely control the chambers and run your 
 
 > You can request access to the API [here](https://tally.so/r/wbNe0e).
 
-## Datasets
+## Open-source Datasets
 
 You can download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code. For example, you can load the [`lt_camera_test_v1`](https://github.com/juangamella/causal-chamber/tree/main/datasets/lt_camera_test_v1) image dataset as follows:
 
@@ -121,6 +109,20 @@ If you encounter a bug, need help using the package, or want to leave us some (h
 ## License
 
 The code in this repository is shared under the permissive [MIT license](https://opensource.org/license/mit/). A copy of can be found in [LICENSE.txt](LICENSE.txt).
+
+## Citation
+
+If you use this package for your scientific work, please consider citing:
+
+```
+﻿@article{gamella2025chamber,
+  author={Gamella, Juan L. and Peters, Jonas and B{\"u}hlmann, Peter},
+  title={Causal chambers as a real-world physical testbed for {AI} methodology},
+  journal={Nature Machine Intelligence},
+  doi={10.1038/s42256-024-00964-x},
+  year={2025},
+}
+```
 
 ## Contributing
 
