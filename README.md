@@ -28,6 +28,8 @@ in an appropriate shell.
 
 > You can request access to the API [here](https://forms.causalchamber.ai/lab).
 
+You can use our API to collect your own data from the chambers and run experiments in real time.
+
 ### Connecting to a chamber in real-time
 
 > Complete tutorial notebook: 
@@ -51,6 +53,11 @@ import matplotlib.pyplot as plt
 plt.imshow(images[0])
 ```
 
+Outptut:
+
+![Single image collected from the Light Tunnel](examples/package_rt_sample_image.png)
+
+
 You can also submit several instructions at once:
 
 ```Python
@@ -58,9 +65,9 @@ You can also submit several instructions at once:
 batch = chamber.new_batch()
 
 # Add instructions
-batch.set('red', 255)
+batch.set('red', 128)
 batch.measure(n=1)
-batch.set('blue', 123)
+batch.set('blue', 128)
 batch.measure(n=1)
 batch.set('pol_1', 90)
 batch.measure(n=1)
@@ -71,9 +78,13 @@ df, images = batch.submit()
 # Plot the images
 plt.figure(figsize=(9,3))
 for i,im in enumerate(images):
-    plt.subplot(3,1,i+1)
+    plt.subplot(1,3,i+1)
     plt.imshow(im)
 ```
+
+Outptut:
+
+![Images collected from the Light Tunnel through a single batch](examples/package_rt_sample_images.png)
 
 You can find a full description of the chamber configuration and its variables can be found [here](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf).
 
