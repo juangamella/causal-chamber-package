@@ -1,12 +1,6 @@
 __all__ = ["datasets", "utils", "ground_truth", "simulators"]
 
-from . import datasets
-from . import utils
-from . import ground_truth
-from . import simulators
-
 message = """
-
 Citation
 --------
 

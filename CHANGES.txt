@@ -1,3 +1,5 @@
+v0.2.3, 2025-12-20
+-- Do not import subpackages (e.g., causalchamber.datasets) when importing top-level package causalchamber.
 v0.2.2, 2025-12-15
 -- Updated the main README with examples of the Remote API.
 -- API credentials can now be passed directly as a tuple
