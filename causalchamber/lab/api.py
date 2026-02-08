@@ -215,13 +215,13 @@ class API():
         
         Examples
         --------
-        >>> api = API('credentials_example.ini')
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081/v0')
         >>> api.make_request('POST', 'sessions/', None)
         Traceback (most recent call last):
         ...
         causalchamber.lab.exceptions.UserError: (code 401) ...
 
-        >>> api = API('credentials_example.ini', endpoint='https://api.causalchamber.ai')
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081/v0')
         >>> response = api.make_request('GET', '/health', None)
         >>> response.status_code
         200

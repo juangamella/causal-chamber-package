@@ -472,7 +472,7 @@ if __name__ == '__main__':
 
 # Test submission & download
 # 1. Start a connection to the lab
-# 2. Create an experiment for chambed_id = 'tt-test-dumy', config = 'standard', leave instructions to fill by me
+# 2. Create an experiment for chamber_id = 'tt-test-dumy', config = 'standard', leave instructions to fill by me
 # 3. Submit it 
 # 4. Call rlab.get_experiments() -> experiment id should appear there
 # 6. Calling rlab.download_data(experiment_id) should return a UserError with code 422
