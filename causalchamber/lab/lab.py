@@ -40,7 +40,7 @@ import yaml
 from PIL import Image
 
 # Imports from this package
-from causalchamber.datasets.utils import download_and_extract
+from causalchamber.lab.utils import download_and_extract
 from causalchamber.lab.chamber import Batch
 from causalchamber.lab.api import API
 from causalchamber.lab.exceptions import LabError, UserError
