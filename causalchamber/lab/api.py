@@ -221,7 +221,7 @@ class API():
         ...
         causalchamber.lab.exceptions.UserError: (code 401) ...
 
-        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081/v0')
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081')
         >>> response = api.make_request('GET', '/health', None)
         >>> response.status_code
         200
@@ -285,7 +285,7 @@ class API():
         
         Examples
         --------
-        >>> api = API('credentials_example.ini', endpoint='https://api.causalchamber.ai')
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081')
         >>> _ = api.make_request('GET', '/health', {})
         >>> _ = api.make_request('GET', '/health', {})
         >>> _ = api.make_request('GET', '/health', {})
@@ -298,13 +298,13 @@ class API():
         -------------
         <BLANKLINE>
         <BLANKLINE>
-                      GET https://api.causalchamber.ai/health
+                      GET http://localhost:8081/health
                              total calls: 3
                         resp. time (avg): ... seconds
                         resp. time (std): ... seconds
         <BLANKLINE>
         <BLANKLINE>
-                      POST https://api.causalchamber.ai/v0/sessions
+                      POST http://localhost:8081/v0/sessions
                              total calls: 1
                         resp. time (avg): ... seconds
                         resp. time (std): NA seconds

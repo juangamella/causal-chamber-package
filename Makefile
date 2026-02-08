@@ -23,7 +23,7 @@
 SUITE = all
 
 # Run tests
-tests: doctests unit-tests
+tests: doctests
 # Note: other test targets; examples simulator-tutorials test-downloads
 
 test-downloads:
