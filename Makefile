@@ -23,7 +23,8 @@
 SUITE = all
 
 # Run tests
-tests: examples doctests simulator-tutorials test-downloads unit-tests
+tests: doctests unit-tests
+# Note: other test targets; examples simulator-tutorials test-downloads
 
 test-downloads:
 	python -m unittest causalchamber.test.test_downloads
@@ -36,6 +37,13 @@ doctests:
 	PYTHONPATH=./ python causalchamber/lab/chamber.py
 	PYTHONPATH=./ python causalchamber/lab/lab.py
 
+# Run the unit tests
+unit-tests:
+ifeq ($(SUITE),all)
+	python -m unittest discover causalchamber.lab.test
+else
+	python -m unittest $(SUITE)
+endif
 
 # Run the examples from the README
 examples:
@@ -49,15 +57,6 @@ simulator-tutorials:
 	cd causalchamber/simulators/tutorials/; \
 	make test-scripts; \
     )
-
-# Run the unit tests
-
-unit-tests:
-ifeq ($(SUITE),all)
-	python -m unittest discover causalchamber.lab.test
-else
-	python -m unittest $(SUITE)
-endif
 
 
 # Make a virtual environment with the package's dependencies
