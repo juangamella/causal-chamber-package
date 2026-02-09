@@ -251,7 +251,7 @@ class API():
                 auth=(self._api_user, self._api_password)
             )
         except requests.exceptions.ConnectionError:
-            raise LabError(1, f'Could not connect to the API at {self.endpoint}. Please try again. If the problem persists, please contact us at support@causalchamber.ai')
+            raise LabError(1, f'Could not connect to the API at {self.endpoint}. Please check your internet connection and try again. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels.')
 
         # Store request roundtime in stats dictionary
         key = f'{method} {url}'
