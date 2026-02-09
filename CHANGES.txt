@@ -1,5 +1,6 @@
-v0.2.3, ??
+Next release, ??
 -- causalchamber.lab now has its own utils module so it does not need to call causalchamber.datasets.utils and trigger calling home when it just needs functions to download / extract / verify zip files.
+-- When lab.api has a connection error, ask the user to check their internet connection.
 v0.2.3, 2025-12-20
 -- Do not import subpackages (e.g., causalchamber.datasets) when importing top-level package causalchamber.
 v0.2.2, 2025-12-15
