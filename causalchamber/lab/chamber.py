@@ -607,8 +607,7 @@ class Batch():
             Number of measurements to perform after setting each row's values.
             Default is 1.
         delay : float, optional
-            Delay (in seconds or appropriate units) between setting values and
-            measuring. Default is 0.
+            Delay (in seconds or appropriate units) between measurements. Default is 0.
 
         Returns
         -------
