@@ -590,6 +590,9 @@ class Batch():
     def from_df(self, dataframe, n=1, delay=0):
         """Load instructions from a pandas dataframe.
 
+        TL;DR: for each row in the dataframe, it will set all the
+        inputs and take a measurement.
+        
         For each row in the DataFrame, insert one
         'SET,<target>,<value>' instruction per column, where <target>
         is the name of the column and <value> is its entry in that
