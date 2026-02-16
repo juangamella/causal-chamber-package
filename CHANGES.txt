@@ -1,4 +1,5 @@
 Next release, ??
+-- from_df now accepts a new `wait` parameter to introduce a WAIT instruction between the .set and .measure instructions of a row.
 -- causalchamber.lab now has its own utils module so it does not need to call causalchamber.datasets.utils and trigger calling home when it just needs functions to download / extract / verify zip files.
 -- When lab.api has a connection error, ask the user to check their internet connection.
 v0.2.3, 2025-12-20
