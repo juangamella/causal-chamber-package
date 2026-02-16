@@ -658,6 +658,9 @@ class Batch():
             # Add SET instructions
             for target in dataframe.columns:
                 self.set(target, row[target])
+                # Add WAIT instruction if specified
+                if wait is not None:
+                    self.wait(wait, limit=wait_limit)  
             # Add MSR instruction
             self.measure(n = n, delay=delay)
         return None
