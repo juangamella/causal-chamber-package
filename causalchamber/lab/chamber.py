@@ -587,14 +587,6 @@ class Batch():
         """
         return self.measure(n, delay)
 
-<<<<<<< Updated upstream
-    def from_df(self, dataframe, n=1, delay=0):
-        """Load instructions from a pandas dataframe.
-
-        TL;DR: for each row in the dataframe, it will set all the
-        inputs and take a measurement.
-        
-=======
     def from_df(self, dataframe, n=1, delay=0, wait=None, wait_limit=30000):
         """Generate instructions from a pandas dataframe.
 
@@ -602,7 +594,6 @@ class Batch():
         instructions to set the input values, and a .measure
         instruction to take measurements (see Examples below).
 
->>>>>>> Stashed changes
         For each row in the DataFrame, insert one
         'SET,<target>,<value>' instruction per column, where <target>
         is the name of the column and <value> is its entry in that
@@ -615,12 +606,9 @@ class Batch():
             DataFrame where each column represents a target variable and each row
             represents a set of input values to set before measurement.
         n : int, optional
-            Number of measurements to perform after setting each row's values.
-            Default is 1.
+            Number of measurements to perform after setting the values
+            in each row. Default is 1.
         delay : float, optional
-<<<<<<< Updated upstream
-            Delay (in seconds or appropriate units) between measurements. Default is 0.
-=======
             Delay (in milliseconds) between measurements. Default is 0.
         wait : int or None, optional
             Duration of the WAIT instruction (in milliseconds) between
@@ -631,7 +619,6 @@ class Batch():
             Safety limit for wait duration in milliseconds. If wait exceeds
             this limit, a ValueError is raised. Set to None to disable the
             check. Default is 30000 (30 seconds).
->>>>>>> Stashed changes
 
         Returns
         -------
@@ -659,17 +646,11 @@ class Batch():
         ['SET,red,1.0', 'SET,blue,0.1', 'MSR,5,10', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,5,10']
         >>> batch.clear()
 
-<<<<<<< Updated upstream
-        >>> batch.from_df(df)
-        >>> batch.instructions
-        ['SET,red,1.0', 'SET,blue,0.1', 'MSR,1,0', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,1,0']
-=======
         Add a WAIT instruction between setting and measuring.
 
         >>> batch.from_df(df, wait=1000)
         >>> batch.instructions
         ['SET,red,1.0', 'SET,blue,0.1', 'WAIT,1000', 'MSR,1,0', 'SET,red,2.0', 'SET,blue,0.2', 'WAIT,1000', 'MSR,1,0']
->>>>>>> Stashed changes
 
         """
         targets = dataframe.columns
@@ -703,10 +684,11 @@ class Batch():
         self._instructions = []
         
     def submit(self):
-        """
-        Submit the instructions in the batch to the chamber.
+        """Submit the instructions in the batch to the chamber.
 
-        The list of instructions remains unchanged after this call. You can clear it with .clear() or continue adding instructions.
+        The list of instructions remains unchanged after this
+        call. You can clear it with .clear() or continue adding
+        instructions.
         
         Returns
         -------
