@@ -236,6 +236,12 @@ class API():
         ...
         causalchamber.lab.exceptions.LabError: (code 404) ...
 
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:9999')
+        >>> api.make_request('GET', '/health', None)
+        Traceback (most recent call last):
+        ...
+        causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: ...
+
         """
         if method not in ['GET', 'POST']:
             raise ValueError(f"HTTP method '{method}' is not allowed")
@@ -250,8 +256,8 @@ class API():
                 json=parameters,
                 auth=(self._api_user, self._api_password)
             )
-        except requests.exceptions.ConnectionError:
-            raise LabError(1, f'Could not connect to the API at {self.endpoint}. Please check your internet connection and try again. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels.')
+        except requests.exceptions.ConnectionError as e:
+            raise LabError(1, f'Could not connect to the API at {self.endpoint}. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: {e}')
 
         # Store request roundtime in stats dictionary
         key = f'{method} {url}'
