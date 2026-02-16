@@ -597,8 +597,9 @@ class Batch():
         For each row in the DataFrame, insert one
         'SET,<target>,<value>' instruction per column, where <target>
         is the name of the column and <value> is its entry in that
-        row. After all the SET instructions for a row, insert a
-        'MSR,n,delay' instruction.
+        row. After all the SET instructions for a row, optionally
+        insert a 'WAIT,<wait>' instruction (if wait is specified),
+        followed by a 'MSR,n,delay' instruction.
 
         Parameters
         ----------
