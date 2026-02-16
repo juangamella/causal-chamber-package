@@ -240,7 +240,7 @@ class API():
         >>> api.make_request('GET', '/health', None)
         Traceback (most recent call last):
         ...
-        causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. Connection error: ... If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels.
+        causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: ...
 
         """
         if method not in ['GET', 'POST']:
