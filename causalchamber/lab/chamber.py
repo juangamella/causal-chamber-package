@@ -587,28 +587,39 @@ class Batch():
         """
         return self.measure(n, delay)
 
-    def from_df(self, dataframe, n=1, delay=0):
-        """Load instructions from a pandas dataframe.
+    def from_df(self, dataframe, n=1, delay=0, wait=None, wait_limit=30000):
+        """Generate instructions from a pandas dataframe.
+
+        TL;DR: for each row in the dataframe, add .set
+        instructions to set the input values, and a .measure
+        instruction to take measurements (see Examples below).
 
         For each row in the DataFrame, insert one
         'SET,<target>,<value>' instruction per column, where <target>
         is the name of the column and <value> is its entry in that
-        row. After all the SET instructions for a row, insert a
-        'MSR,n,delay' instruction.
-
-        See the example below.
+        row. After all the SET instructions for a row, optionally
+        insert a 'WAIT,<wait>' instruction (if wait is specified),
+        followed by a 'MSR,n,delay' instruction.
 
         Parameters
         ----------
         dataframe : pd.DataFrame
             DataFrame where each column represents a target variable and each row
-            represents a set of values to configure before measurement.
+            represents a set of input values to set before measurement.
         n : int, optional
-            Number of measurements to perform after setting each row's values.
-            Default is 1.
+            Number of measurements to perform after setting the values
+            in each row. Default is 1.
         delay : float, optional
-            Delay (in seconds or appropriate units) between setting values and
-            measuring. Default is 0.
+            Delay (in milliseconds) between measurements. Default is 0.
+        wait : int or None, optional
+            Duration of the WAIT instruction (in milliseconds) between
+            setting values and taking measurements. If None (default),
+            no WAIT instruction is inserted. Must be positive if
+            specified.
+        wait_limit : int or None, optional
+            Safety limit for wait duration in milliseconds. If wait exceeds
+            this limit, a ValueError is raised. Set to None to disable the
+            check. Default is 30000 (30 seconds).
 
         Returns
         -------
@@ -621,14 +632,26 @@ class Batch():
         ...     'red': [1.0, 2.0],
         ...     'blue': [0.1, 0.2]
         ... })
+
+        The default: one measurement after setting all variables.
+        
+        >>> batch.from_df(df)
+        >>> batch.instructions
+        ['SET,red,1.0', 'SET,blue,0.1', 'MSR,1,0', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,1,0']
+        >>> batch.clear()
+
+        Change the number of measurements per row and the optional delay between them.
+        
         >>> batch.from_df(df, n=5, delay=10)
         >>> batch.instructions
         ['SET,red,1.0', 'SET,blue,0.1', 'MSR,5,10', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,5,10']
         >>> batch.clear()
 
-        >>> batch.from_df(df)
+        Add a WAIT instruction between setting and measuring.
+
+        >>> batch.from_df(df, wait=1000)
         >>> batch.instructions
-        ['SET,red,1.0', 'SET,blue,0.1', 'MSR,1,0', 'SET,red,2.0', 'SET,blue,0.2', 'MSR,1,0']
+        ['SET,red,1.0', 'SET,blue,0.1', 'WAIT,1000', 'MSR,1,0', 'SET,red,2.0', 'SET,blue,0.2', 'WAIT,1000', 'MSR,1,0']
 
         """
         targets = dataframe.columns
@@ -636,6 +659,9 @@ class Batch():
             # Add SET instructions
             for target in dataframe.columns:
                 self.set(target, row[target])
+            # Add WAIT instruction if specified
+            if wait is not None:
+                self.wait(wait, limit=wait_limit)  
             # Add MSR instruction
             self.measure(n = n, delay=delay)
         return None
@@ -662,10 +688,11 @@ class Batch():
         self._instructions = []
         
     def submit(self):
-        """
-        Submit the instructions in the batch to the chamber.
+        """Submit the instructions in the batch to the chamber.
 
-        The list of instructions remains unchanged after this call. You can clear it with .clear() or continue adding instructions.
+        The list of instructions remains unchanged after this
+        call. You can clear it with .clear() or continue adding
+        instructions.
         
         Returns
         -------

@@ -215,13 +215,13 @@ class API():
         
         Examples
         --------
-        >>> api = API('credentials_example.ini')
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081/v0')
         >>> api.make_request('POST', 'sessions/', None)
         Traceback (most recent call last):
         ...
         causalchamber.lab.exceptions.UserError: (code 401) ...
 
-        >>> api = API('credentials_example.ini', endpoint='https://api.causalchamber.ai')
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081')
         >>> response = api.make_request('GET', '/health', None)
         >>> response.status_code
         200
@@ -235,6 +235,12 @@ class API():
         Traceback (most recent call last):
         ...
         causalchamber.lab.exceptions.LabError: (code 404) ...
+
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:9999')
+        >>> api.make_request('GET', '/health', None)
+        Traceback (most recent call last):
+        ...
+        causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: ...
 
         """
         if method not in ['GET', 'POST']:
@@ -250,8 +256,8 @@ class API():
                 json=parameters,
                 auth=(self._api_user, self._api_password)
             )
-        except requests.exceptions.ConnectionError:
-            raise LabError(1, f'Could not connect to the API at {self.endpoint}. Please try again. If the problem persists, please contact us at support@causalchamber.ai')
+        except requests.exceptions.ConnectionError as e:
+            raise LabError(1, f'Could not connect to the API at {self.endpoint}. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: {e}')
 
         # Store request roundtime in stats dictionary
         key = f'{method} {url}'
@@ -285,7 +291,7 @@ class API():
         
         Examples
         --------
-        >>> api = API('credentials_example.ini', endpoint='https://api.causalchamber.ai')
+        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081')
         >>> _ = api.make_request('GET', '/health', {})
         >>> _ = api.make_request('GET', '/health', {})
         >>> _ = api.make_request('GET', '/health', {})
@@ -298,13 +304,13 @@ class API():
         -------------
         <BLANKLINE>
         <BLANKLINE>
-                      GET https://api.causalchamber.ai/health
+                      GET http://localhost:8081/health
                              total calls: 3
                         resp. time (avg): ... seconds
                         resp. time (std): ... seconds
         <BLANKLINE>
         <BLANKLINE>
-                      POST https://api.causalchamber.ai/v0/sessions
+                      POST http://localhost:8081/v0/sessions
                              total calls: 1
                         resp. time (avg): ... seconds
                         resp. time (std): NA seconds
