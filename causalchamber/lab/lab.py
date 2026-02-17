@@ -278,31 +278,54 @@ class Lab():
         response = self._API.make_request('POST', f'experiments/{experiment_id}/cancel')
         return response.json()
 
-    def download_data(self, experiment_id, root, verbose=True):
+    def download_data(self, experiment_id, root=None, verbose=True, store_at=None):
         """
         Download data from a completed experiment.
-        
+
         Parameters
         ----------
         experiment_id : str
             The unique identifier of the experiment.
-        root : str or pathlib.Path
+        root : str or pathlib.Path, optional
             Directory where the data will be downloaded and extracted.
+            Deprecated in favor of `store_at`.
         verbose : bool, optional
             If True, traces are printed and a download progress bar is
             shown. If False no outputs are produced. Defauls to True.
-        
+        store_at : str or pathlib.Path, optional
+            Directory where the data will be downloaded and extracted.
+            Synonym for `root`.
+
         Returns
         -------
         pandas.DataFrame
             DataFrame containing the experimental observations.
-        
+
         Raises
         ------
         UserError
             If the experiment is not in 'DONE' status.
+        ValueError
+            If both `root` and `store_at` are given, or if neither is given.
+
+        Examples
+        --------
+        >>> lab = object.__new__(Lab)
+        >>> lab.download_data("exp-id", root="/tmp/a", store_at="/tmp/b")
+        Traceback (most recent call last):
+            ...
+        ValueError: Cannot specify both 'root' and 'store_at'. Use 'store_at'.
+        >>> lab.download_data("exp-id")
+        Traceback (most recent call last):
+            ...
+        ValueError: Must specify 'store_at' (or 'root').
 
         """
+        if store_at is not None and root is not None:
+            raise ValueError("Cannot specify both 'root' and 'store_at'. Use 'store_at'.")
+        if store_at is None and root is None:
+            raise ValueError("Must specify 'store_at' (or 'root').")
+        root = store_at if store_at is not None else root
         experiment = self.get_experiment(experiment_id)
         current_status = experiment['status']
         if current_status != 'DONE':
