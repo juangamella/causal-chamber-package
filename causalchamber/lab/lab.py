@@ -775,10 +775,49 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
     ... ]
     >>> _print_experiment_table(experiments, print_max=10)
     <BLANKLINE>
-      Status   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
-    ───────────────────────────────────────────────────────────────────────────────────────────
-      DONE     test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
-    ───────────────────────────────────────────────────────────────────────────────────────────
+      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+      DONE     NA         test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+
+    >>> experiments = [
+    ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01', 'total_instructions': 100, 'current_instruction': 10,
+    ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
+    ... ]
+    >>> _print_experiment_table(experiments, print_max=10)
+    <BLANKLINE>
+      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+      DONE     10 %       test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+
+    >>> experiments = [
+    ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01', 'total_instructions': 6002, 'current_instruction': 5348,
+    ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
+    ... ]
+    >>> _print_experiment_table(experiments, print_max=10)
+    <BLANKLINE>
+      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+      DONE     89.1 %     test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+
+    >>> experiments = [
+    ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01', 'total_instructions': 6002, 'current_instruction': 5429,
+    ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
+    ... ]
+    >>> _print_experiment_table(experiments, print_max=10)
+    <BLANKLINE>
+      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+      DONE     90.45 %    test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
     
@@ -813,7 +852,7 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
     DEFAULT_VALUE = "NA"
     
     # Calculate column widths for better formatting
-    headers = ["Status", "Tag", "Experiment ID", "Chamber ID", "Config", "Submitted On"]
+    headers = ["Status", "Progress", "Tag", "Experiment ID", "Chamber ID", "Config", "Submitted On"]
     col_widths = [len(h) for h in headers]
     
     # Process data and calculate maximum widths
@@ -824,12 +863,18 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
         experiment_id = experiment.get('experiment_id', DEFAULT_VALUE)
         chamber_id = experiment.get('chamber_id', DEFAULT_VALUE)
         config = experiment.get('config', DEFAULT_VALUE)
+        total_instructions = experiment.get('total_instructions', None)
+        current_instruction = experiment.get('current_instruction', None)
+        try:
+            progress = f'{(float(current_instruction) / total_instructions * 100):.4g} %'
+        except Exception:
+            progress = DEFAULT_VALUE
         if 'submitted_on' in experiment:
             submitted_on = _fmt_timestamp(experiment.get('submitted_on'))
         else:
             submitted_on = DEFAULT_VALUE
         
-        row = [status, tag, experiment_id, chamber_id, config, submitted_on]
+        row = [status, progress, tag, experiment_id, chamber_id, config, submitted_on]
         rows.append(row)
         
         # Update column widths (using stripped text for length calculation)
