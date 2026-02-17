@@ -1,5 +1,6 @@
-Next release, ??
+v0.2.4, ???
 -- from_df now accepts a new `wait` parameter to introduce a WAIT instruction between the .set and .measure instructions of a row.
+-- get_experiments now prints the percentage of instructions executed for each experiment.
 -- causalchamber.lab now has its own utils module so it does not need to call causalchamber.datasets.utils and trigger calling home when it just needs functions to download / extract / verify zip files.
 v0.2.3, 2025-12-20
 -- Do not import subpackages (e.g., causalchamber.datasets) when importing top-level package causalchamber.
