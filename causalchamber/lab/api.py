@@ -240,9 +240,7 @@ class API():
         >>> api.make_request('GET', '/health', None)
         Traceback (most recent call last):
         ...
-        causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels.
-
-        Error details: ...
+        causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: ...
 
         """
         if method not in ['GET', 'POST']:
@@ -259,7 +257,7 @@ class API():
                 auth=(self._api_user, self._api_password)
             )
         except requests.exceptions.ConnectionError as e:
-            raise LabError(1, f'Could not connect to the API at {self.endpoint}. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels.\n\nError details: {e}')
+            raise LabError(1, f'Could not connect to the API at {self.endpoint}. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: {e}')
 
         # Store request roundtime in stats dictionary
         key = f'{method} {url}'
