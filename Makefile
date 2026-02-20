@@ -69,4 +69,9 @@ venv:
 	)
 
 
-.PHONY: test, tests, doctests, examples
+# Build HTML documentation from causalchamber/lab docstrings
+docs:
+	venv/bin/sphinx-build -b html docs docs/_build/html
+
+
+.PHONY: test, tests, doctests, examples, docs
