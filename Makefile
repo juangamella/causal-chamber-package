@@ -73,5 +73,9 @@ venv:
 docs:
 	venv/bin/sphinx-build -b html docs docs/_build/html
 
+# Build Markdown documentation from causalchamber/lab docstrings
+docs-md:
+	venv/bin/sphinx-build -b markdown docs docs/_build/markdown
 
-.PHONY: test, tests, doctests, examples, docs
+
+.PHONY: test, tests, doctests, examples, docs, docs-md

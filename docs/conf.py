@@ -13,6 +13,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
+    'sphinx_markdown_builder',
 ]
 
 # Napoleon settings — docstrings use NumPy style
