@@ -77,5 +77,9 @@ docs:
 docs-md:
 	venv/bin/sphinx-build -b markdown docs docs/_build/markdown
 
+# Remove all generated documentation
+docs-clean:
+	rm -rf docs/_build
 
-.PHONY: test, tests, doctests, examples, docs, docs-md
+
+.PHONY: test tests doctests examples docs docs-md docs-clean
