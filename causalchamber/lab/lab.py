@@ -680,7 +680,7 @@ def _print_chamber_table(chambers, indentation=0, col_separator=' ', line_separa
     DEFAULT_ENTRY = "NA"
     
     # Calculate column widths for better formatting
-    headers = ["Status", "Chamber ID", "Model", "Mode", "Valid Configurations"]
+    headers = ["Status", "Chamber ID", "Model", "Mode", "Hardware Configurations"]
     col_widths = [len(h) for h in headers]
     
     # Process data and calculate maximum widths
