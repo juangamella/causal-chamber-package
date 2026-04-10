@@ -1,4 +1,4 @@
-v0.2.6, ???
+v0.2.6, 2026-04-10
 -- Values in SET instructions are formatted directly as floats (no rounding)
 v0.2.5, 2026-02-27
 -- Changed "Valid Configurations" to "Hardware Configurations" in table prints
