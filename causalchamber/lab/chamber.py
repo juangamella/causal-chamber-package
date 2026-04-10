@@ -751,13 +751,13 @@ def _generate_set(target, value):
     >>> _generate_set('pol_1', 97.11)
     'SET,pol_1,97.11'
     >>> _generate_set('k_f2',2e-5)
-    'SET,hatch,0.00002'
+    'SET,hatch,2e-05'
     >>> _generate_set('k_f2',2e-7)
-    'SET,hatch,0.0000002
+    'SET,hatch,2e-07
     >>> _generate_set('hatch',-3.8205202890218004e-13)
-    'SET,hatch,-0.0'
+    'SET,hatch,-3.8205202890218004e-13'
     >>> _generate_set('hatch',3.8205202890218004e-13)
-    'SET,hatch,0.0'
+    'SET,hatch,3.8205202890218004e-13'
     
     >>> _generate_set(123, 97.1)
     Traceback (most recent call last):
@@ -773,7 +773,7 @@ def _generate_set(target, value):
     if not isinstance(target, str):
         raise TypeError(f"target must be a string, not {type(target).__name__}")
     # Generate and return
-    value = np.float32(value)
+    value = float(value)
     return f'SET,{target},{value}'
 
 def _generate_msr(n, delay):
