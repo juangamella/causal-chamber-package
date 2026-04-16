@@ -21,7 +21,7 @@
 # SOFTWARE.
 
 """
-Module to access the Causal Chamber™ Remote Lab.
+Module to access the Causal Chamber® Remote Lab.
 """
 
 # Standard library packages
@@ -305,6 +305,9 @@ class Lab():
         """
         experiment = self.get_experiment(experiment_id)
         current_status = experiment['status']
+        # TODO: add a new branch for status CANCELED / FAILED / STOPPING
+        # TODO: current branch should work for QUEUED and SUBMITTING
+        # TODO: explicitly say: cannot download data because ...
         if current_status != 'DONE':
             raise UserError(code = 0,
                             message = f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})",

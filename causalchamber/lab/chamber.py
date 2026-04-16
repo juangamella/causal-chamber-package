@@ -49,7 +49,7 @@ from causalchamber.lab.api import API
 
 class Chamber():
     """
-    Interface for operating a Causal Chamber™ in real time..
+    Interface for operating a Causal Chamber® in real time..
     
     
     Attributes
@@ -253,7 +253,7 @@ class Chamber():
     @property
     def chamber_id(self):
         """
-        Get the unique identifier of the Causal Chamber™ to which this lab.Chamber instance is connected.
+        Get the unique identifier of the Causal Chamber® to which this lab.Chamber instance is connected.
         
         Returns
         -------
@@ -391,7 +391,7 @@ class Chamber():
             Multi-line string with the chamber details.
         """
         msg = f"""
-    Causal Chamber™ {self.chamber_id}
+    Causal Chamber® {self.chamber_id}
   ---------------------------------
        chamber_id : {self.chamber_id}
             model : {self.model}
