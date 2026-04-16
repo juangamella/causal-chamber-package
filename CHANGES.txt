@@ -1,3 +1,5 @@
+feature/cancelling_n_queue, ??????
+-- Changed TM symbol to ® throughout the code.
 v0.2.6, 2026-04-10
 -- Values in SET instructions are formatted directly as floats (no rounding)
 v0.2.5, 2026-02-27
