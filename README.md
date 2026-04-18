@@ -26,9 +26,7 @@ in an appropriate shell.
 
 ## Remote API
 
-You can use our API to collect your own data from the chambers and run experiments in real time.
-
-> You can request access to the API [here](https://forms.causalchamber.ai/lab).
+You can use our [Remote Lab](https://docs.causalchamber.ai/) to collect your own data from the chambers and run experiments in real time.
 
 ### Connecting to a chamber in real-time
 
