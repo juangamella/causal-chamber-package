@@ -1,5 +1,8 @@
 feature/cancelling_n_queue, ??????
 -- Changed TM symbol to ® throughout the code.
+-- By default, get_experiments prints 10 experiments (from previous default of no limit)"
+-- Updated the README images to the mk2 models of the chambers
+-- Added color formatting for the new experiment status STOPPING and SUBMITTING
 v0.2.6, 2026-04-10
 -- Values in SET instructions are formatted directly as floats (no rounding)
 v0.2.5, 2026-02-27
