@@ -173,7 +173,7 @@ class Lab():
         response = self._API.make_request('GET', f'experiments/{experiment_id}')
         return response.json()
     
-    def get_experiments(self, verbose=True, print_max=None):
+    def get_experiments(self, verbose=True, print_max=10):
         """
         Retrieve a list of all your experiments.
         
