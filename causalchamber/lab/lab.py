@@ -578,7 +578,9 @@ _STATUS_COLORS = {
     'OFFLINE': 'light_red',
     # Experiment status
     'QUEUED': 'yellow',
+    'SUBMITTING': 'light_yellow',
     'RUNNING': 'green',
+    'STOPPING': 'magenta',#(255, 165, 0),
     'FAILED': 'light_red',
     'CANCELED': (150,150,150),
     'DONE': 'light_green'
