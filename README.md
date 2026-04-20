@@ -66,7 +66,7 @@ The package refreshes its list of available datasets every time it's freshly imp
 
 ## Ground truth
 
-> This loads the ground truth for the [original Mk1 prototypes](https://docs.causalchamber.ai/the-chambers/original-prototypes) of the Nature paper. See the [documentation](https://docs.causalchamber.ai/the-chambers/how-they-work) for the ground truth of the newer Mk2 models ([Light Tunnel](https://docs.causalchamber.ai/the-chambers/light-tunnel-mk2) / [Wind Tunnel](https://docs.causalchamber.ai/the-chambers/wind-tunnel-mk2)).
+> This loads the ground truth for the [original Mk1 prototypes](https://docs.causalchamber.ai/the-chambers/original-prototypes) of the [Nature paper](https://www.nature.com/articles/s42256-024-00964-x). See the [documentation](https://docs.causalchamber.ai/the-chambers/how-they-work) for the ground truth of the newer Mk2 models ([Light Tunnel](https://docs.causalchamber.ai/the-chambers/light-tunnel-mk2) / [Wind Tunnel](https://docs.causalchamber.ai/the-chambers/wind-tunnel-mk2)).
 
 For evaluation and visualization, you can directly load the ground-truth causal graphs for the different chambers and their configurations. For example, to load the causal graphs given in [Fig. 3](https://www.nature.com/articles/s42256-024-00964-x/figures/3) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x):
 
