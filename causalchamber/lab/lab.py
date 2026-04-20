@@ -139,7 +139,7 @@ class Lab():
         response = self._API.make_request('GET', f'queues/{chamber_id}')
         experiments = response.json()['experiments']
         # Sort by queue position
-        sorted_by_position = sorted(experiments, key=lambda x: x['position'], reverse=True)
+        sorted_by_position = sorted(experiments, key=lambda x: x['position'])
         # Optionally, print list of experiments
         if verbose:
             _print_queue_table(sorted_by_position, chamber_id, print_max=print_max)
@@ -1078,22 +1078,20 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     print(' ' * indentation + header_row)
     print(' ' * indentation + separator)
 
-    if len(to_print) > 0:
-        print(' ' * indentation, colored(' --- Queued experiments ---', (100,100,100)))
-
-    for row in rows:
-        _print_row(row, right_align_first=True)
-
-    if len(to_print) < len(queued):
-        print()
-        print(' ' * indentation, colored(f' --- showing {len(to_print)} / {len(queued)} experiments ---', (100,100,100)))
-    if len(to_print) == 0:
-        print(' ' * indentation, colored(' --- There are no experiments in the queue ---', (100,100,100)))
-
     if active_row is not None:
-        print()
         print(' ' * indentation, colored(' --- Active experiment ---', (100,100,100)))
         _print_row(active_row, right_align_first=True)
+        print()
+
+    if len(to_print) > 0:
+        print(' ' * indentation, colored(' --- Queued experiments ---', (100,100,100)))
+    for row in rows:
+        _print_row(row, right_align_first=True)
+    if len(to_print) < len(queued):
+        print()
+        print(' ' * indentation, colored(f' --- showing {len(to_print)} / {len(queued)} queued experiments ---', (100,100,100)))
+    if len(to_print) == 0:
+        print(' ' * indentation, colored(' --- There are no experiments in the queue ---', (100,100,100)))
 
     print(' ' * indentation + separator)
     print(' ' * indentation + f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
