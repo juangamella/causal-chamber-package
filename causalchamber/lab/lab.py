@@ -955,11 +955,11 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     --------
     >>> _print_queue_table([], 'ch-abcd-xyzw', print_max=10)
     <BLANKLINE>
-    Experiments in the queue for chamber 'ch-abcd-xyzw'. Order is by position, i.e., 1 = next to run
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
          Status   Tag   Experiment ID   Submitted By   Submitted On  
     ─────────────────────────────────────────────────────────────────
-             --- there are no experiments in the queue ---
+      --- There are no experiments in the queue ---
     ─────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
@@ -970,15 +970,65 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     ... ]
     >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10)
     <BLANKLINE>
-    Experiments in the queue for chamber 'ch-abcd-xyzw'. Order is by position, i.e., 1 = next to run
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
           Status   Tag     Experiment ID   Submitted By   Submitted On                    
     ──────────────────────────────────────────────────────────────────────────────────────
+      --- Queued experiments ---
       1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
     ──────────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
     
+    >>> experiments_with_active = [
+    ...     {'status': 'RUNNING', 'tag': 'active1', 'experiment_id': 'exp_00',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 0, 'current_instruction': 50, 'total_instructions': 200},
+    ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 1}
+    ... ]
+    >>> _print_queue_table(experiments_with_active, 'ch-abcd-xyzw', print_max=10)
+    <BLANKLINE>
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
+    <BLANKLINE>
+             Status    Tag       Experiment ID   Submitted By   Submitted On                    
+    ────────────────────────────────────────────────────────────────────────────────────────────
+      --- Active experiment ---
+      25 %   RUNNING   active1   exp_00          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+    <BLANKLINE>
+      --- Queued experiments ---
+         1   QUEUED    test1     exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+    ────────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+
+    >>> many_experiments = [
+    ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 1},
+    ...     {'status': 'QUEUED', 'tag': 'test2', 'experiment_id': 'exp_02',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 2},
+    ...     {'status': 'QUEUED', 'tag': 'test3', 'experiment_id': 'exp_03',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 3}
+    ... ]
+    >>> _print_queue_table(many_experiments, 'ch-abcd-xyzw', print_max=2)
+    <BLANKLINE>
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
+    <BLANKLINE>
+          Status   Tag     Experiment ID   Submitted By   Submitted On                    
+    ──────────────────────────────────────────────────────────────────────────────────────
+      --- Queued experiments ---
+      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+      2   QUEUED   test2   exp_02          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+    <BLANKLINE>
+      --- showing 2 / 3 queued experiments ---
+    ──────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+
     >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10.5)
     Traceback (most recent call last):
         ...
@@ -1073,7 +1123,7 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
         print(' ' * indentation + col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator)
 
     print()
-    print(f"Experiments in the queue for chamber '{chamber_id}'. Order is by position, i.e., 1 = next to run")
+    print(f"Active and queued experiments for chamber '{chamber_id}'. Position 1 is the next to run.")
     print()
     print(' ' * indentation + header_row)
     print(' ' * indentation + separator)
