@@ -1,3 +1,5 @@
+v0.2.8, 2026-04-26
+-- Fixed version number in pyproject.toml
 v0.2.7, 2026-04-26
 -- Changed TM symbol to ® throughout the code.
 -- By default, get_experiments and get_queue prints 10 experiments (from previous default of no limit)"
