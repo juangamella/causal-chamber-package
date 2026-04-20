@@ -9,9 +9,9 @@
 
 The `causalchamber` package provides different functionality for the [Causal Chambers](https://causalchamber.ai?utm_source=package_github):
 
-- **[Remote Lab](https://docs.causalchamber.ai)**: a Python interface to run real-time experiments and collect datasets from  our pool of chambers
-- **[Open-source Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
+- **[Remote Lab](https://docs.causalchamber.ai)**: a Python interface to run real-time experiments and collect datasets from  our pool of chambers.
 - **[Simulators](#simulators)**: Python simulators and mechanistic models of different chamber phenomena.
+- **[Open-source Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
 - **[Ground truth](#ground-truth)**: load the ground-truth causal graphs and other information for each chamber.
 
 ## Install
@@ -65,6 +65,8 @@ The package refreshes its list of available datasets every time it's freshly imp
 [^1]: This also means you must delete the dataset yourself if you want to download a fresh copy. This is on purpose :)
 
 ## Ground truth
+
+> This loads the ground truth for the [original Mk1 prototypes](https://docs.causalchamber.ai/the-chambers/original-prototypes) of the Nature paper. See the [documentation](https://docs.causalchamber.ai/the-chambers/how-they-work) for the ground truth of the newer Mk2 models ([Light Tunnel](https://docs.causalchamber.ai/the-chambers/light-tunnel-mk2) / [Wind Tunnel](https://docs.causalchamber.ai/the-chambers/wind-tunnel-mk2)).
 
 For evaluation and visualization, you can directly load the ground-truth causal graphs for the different chambers and their configurations. For example, to load the causal graphs given in [Fig. 3](https://www.nature.com/articles/s42256-024-00964-x/figures/3) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x):
 
