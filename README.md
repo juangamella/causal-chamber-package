@@ -5,13 +5,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Donate](https://img.shields.io/static/v1.svg?logo=Github%20Sponsors&label=donate&message=Github%20Sponsors&color=e874ff)](https://github.com/sponsors/juangamella)
 
-![The Causal Chambers: (left) the wind tunnel, and (right) the light tunnel with the front panel removed to show its interior.](https://causalchamber.s3.eu-central-1.amazonaws.com/downloadables/the_chambers.jpg)
+[![The Causal Chambers: (left) the wind tunnel, and (right) the light tunnel with the front panel removed to show its interior.](https://cchamber-box.s3.eu-central-2.amazonaws.com/the_chambers_mk2.jpg)](https://causalchamber.ai?utm_source=package_github)
 
-The `causalchamber` package provides different functionality for the [Causal Chambers](https://causalchamber.ai):
+The `causalchamber` package provides different functionality for the [Causal Chambers](https://causalchamber.ai?utm_source=package_github):
 
-- **[Remote API](#remote-api)**: a Python interface to remotely access our pool of chambers and run your own experiments.
-- **[Open-source Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
+- **[Remote Lab](https://docs.causalchamber.ai)**: a Python interface to run real-time experiments and collect datasets from  our pool of chambers.
 - **[Simulators](#simulators)**: Python simulators and mechanistic models of different chamber phenomena.
+- **[Open-source Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
 - **[Ground truth](#ground-truth)**: load the ground-truth causal graphs and other information for each chamber.
 
 ## Install
@@ -24,118 +24,17 @@ pip install causalchamber
 
 in an appropriate shell.
 
-## Remote API
+## Remote Lab
 
-You can use our API to collect your own data from the chambers and run experiments in real time.
+You can use our [Remote Lab](https://causalchamber.ai?utm_source=package_github) to collect your own data from the chambers and run experiments in real time.
 
-> You can request access to the API [here](https://forms.causalchamber.ai/lab).
+> See the [documentation](https://docs.causalchamber.ai) for examples.
 
-### Connecting to a chamber in real-time
+## Simulators
 
-You can open a real-time connection to a chamber and use it to send instructions and collect data. This is particularly suited for online learning settings or to test active learning, experiment design or control algorithms. To collect static datasets from long-running experiments, we recommend using the [queue](#submitting-a-job-to-the-chamber-queue) instead.
+The package also contains Python implementations of different simulators of chamber phenomena, including the mechanistic models described in [Appendix IV](https://arxiv.org/pdf/2404.11341#page=28&zoom=100,57,65) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x).
 
-As an example, let's connect to a [Light Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_lt_mk2_camera_fast.pdf) and collect some images in real time.
-
-```Python
-import causalchamber.lab as lab
-
-# Open a real-time connection
-chamber = lab.Chamber(chamber_id = 'lt-demo-x81a',
-                      config = 'camera_fast',
-                      credentials_file = '.credentials')
-
-# Turn on the light source and take one image
-chamber.set('red', 255)
-df, images = chamber.measure(n=1)
-
-# Plot the image
-import matplotlib.pyplot as plt
-plt.imshow(images[0])
-```
-
-Outptut:
-
-<img src="examples/package_rt_sample_image.png" width="300" height="300">
-
-
-You can also submit several instructions at once using a batch:
-
-```Python
-# Start a new batch
-batch = chamber.new_batch()
-
-# Add instructions
-batch.set('red', 128)
-batch.measure(n=1) # Image 1: red
-batch.set('blue', 128)
-batch.measure(n=1) # Image 2: purple
-batch.set('pol_1', 90)
-batch.measure(n=1) # Image 3: crossed polarizers
-
-# Submit the batch and receive the data
-df, images = batch.submit()
-
-# Plot the images
-plt.figure(figsize=(9,3))
-for i,im in enumerate(images):
-    plt.subplot(1,3,i+1)
-    plt.imshow(im)
-```
-
-Outptut:
-
-![Images collected from the Light Tunnel through a single batch](examples/package_rt_sample_images.png)
-
-### Submitting a job to the chamber queue
-
-We recommend using the queue for long-running experiments where no interaction is needed.
-
-It works like a compute cluster: you submit an experiment protocol to the queue, the chamber runs it when ready, and it uploads the data to a server for you to download.
-
-As an example, let's submit a simple experiment where we quickly toggle the intake fan of the [Wind Tunnel Mk2.](https://cchamber-box.s3.eu-central-2.amazonaws.com/config_doc_wt_mk2_full.pdf) and observe the resulting dynamics.
-
-```Python
-# Connect to the Remote Lab
-rlab = lab.Lab(credentials_file = '.credentials')
-
-# Start a new protocol
-experiment = rlab.new_experiment(chamber_id = 'wt-demo-ch4lu', config ='full')
-
-# Add instructions to the protocol
-experiment.wait(7_000) # Wait 7s for fan speed to stabilize after reset
-experiment.measure(n=80) # Measure base state
-experiment.set('load_in', 1.0) # Turn intake fan to max
-experiment.measure(n=20) # Measure impulse state
-experiment.set('load_in', 0.01) # Idle intake fan
-experiment.measure(n=80) # Measure base state
-    
-# Submit the experiment
-experiment_id = experiment.submit(tag='demo-queue')
-```
-
-You can monitor the status of the experiment by calling
-
-```Python
-rlab.get_experiments(print_max=1)
-```
-
-which prints a table with your experiments and their status:
-
-![](examples/package_printout_example.jpg)
-
-Once the experiment's status is `DONE`, you can download the data
-
-```Python
-dataset = rlab.download_data(experiment_id, root='/tmp')
-observations = dataset.dataframe # Load data as pandas dataframe
-```
-
-and plot the results
-```Python
-from examples.plotting import plot_wt
-plot_wt(observations)
-```
-![Images collected from the Light Tunnel through a single batch](examples/package_queue_plots.png)
+> See the [Simulator Index](causalchamber/simulators/) for the complete documentation and examples.
 
 ## Open-source Datasets
 
@@ -165,13 +64,9 @@ The package refreshes its list of available datasets every time it's freshly imp
 
 [^1]: This also means you must delete the dataset yourself if you want to download a fresh copy. This is on purpose :)
 
-## Simulators
-
-The package also contains Python implementations of different simulators of chamber phenomena, including the mechanistic models described in [Appendix IV](https://arxiv.org/pdf/2404.11341#page=28&zoom=100,57,65) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x).
-
-> See the [Simulator Index](causalchamber/simulators/) for the complete documentation and examples.
-
 ## Ground truth
+
+> **Note:** This loads the ground truth for the [original Mk1 prototypes](https://docs.causalchamber.ai/the-chambers/original-prototypes) of the [Nature paper](https://www.nature.com/articles/s42256-024-00964-x). See the [documentation](https://docs.causalchamber.ai/the-chambers/how-they-work) for the ground truth of the newer Mk2 models ([Light Tunnel](https://docs.causalchamber.ai/the-chambers/light-tunnel-mk2) / [Wind Tunnel](https://docs.causalchamber.ai/the-chambers/wind-tunnel-mk2)).
 
 For evaluation and visualization, you can directly load the ground-truth causal graphs for the different chambers and their configurations. For example, to load the causal graphs given in [Fig. 3](https://www.nature.com/articles/s42256-024-00964-x/figures/3) of the original [paper](https://www.nature.com/articles/s42256-024-00964-x):
 

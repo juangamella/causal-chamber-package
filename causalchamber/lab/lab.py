@@ -21,7 +21,7 @@
 # SOFTWARE.
 
 """
-Module to access the Causal Chamber™ Remote Lab.
+Module to access the Causal Chamber® Remote Lab.
 """
 
 # Standard library packages
@@ -102,7 +102,7 @@ class Lab():
         _ = self.get_experiments(verbose=verbose, print_max=10)
         
 
-    def get_queue(self, chamber_id, verbose=True, print_max=None):
+    def get_queue(self, chamber_id, verbose=True, print_max=10):
         """Retrieve the experiments that are waiting in the queue of the
         given chamber.
         
@@ -139,7 +139,7 @@ class Lab():
         response = self._API.make_request('GET', f'queues/{chamber_id}')
         experiments = response.json()['experiments']
         # Sort by queue position
-        sorted_by_position = sorted(experiments, key=lambda x: x['position'], reverse=True)
+        sorted_by_position = sorted(experiments, key=lambda x: x['position'])
         # Optionally, print list of experiments
         if verbose:
             _print_queue_table(sorted_by_position, chamber_id, print_max=print_max)
@@ -173,7 +173,7 @@ class Lab():
         response = self._API.make_request('GET', f'experiments/{experiment_id}')
         return response.json()
     
-    def get_experiments(self, verbose=True, print_max=None):
+    def get_experiments(self, verbose=True, print_max=10):
         """
         Retrieve a list of all your experiments.
         
@@ -305,6 +305,9 @@ class Lab():
         """
         experiment = self.get_experiment(experiment_id)
         current_status = experiment['status']
+        # TODO: add a new branch for status CANCELED / FAILED / STOPPING
+        # TODO: current branch should work for QUEUED and SUBMITTING
+        # TODO: explicitly say: cannot download data because ...
         if current_status != 'DONE':
             raise UserError(code = 0,
                             message = f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})",
@@ -575,7 +578,9 @@ _STATUS_COLORS = {
     'OFFLINE': 'light_red',
     # Experiment status
     'QUEUED': 'yellow',
+    'SUBMITTING': 'light_yellow',
     'RUNNING': 'green',
+    'STOPPING': 'magenta',#(255, 165, 0),
     'FAILED': 'light_red',
     'CANCELED': (150,150,150),
     'DONE': 'light_green'
@@ -950,11 +955,11 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     --------
     >>> _print_queue_table([], 'ch-abcd-xyzw', print_max=10)
     <BLANKLINE>
-    Experiments in the queue for chamber 'ch-abcd-xyzw'. Order is by position, i.e., 1 = next to run
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
          Status   Tag   Experiment ID   Submitted By   Submitted On  
     ─────────────────────────────────────────────────────────────────
-             --- there are no experiments in the queue ---
+      --- There are no experiments in the queue ---
     ─────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
@@ -965,15 +970,65 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     ... ]
     >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10)
     <BLANKLINE>
-    Experiments in the queue for chamber 'ch-abcd-xyzw'. Order is by position, i.e., 1 = next to run
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
           Status   Tag     Experiment ID   Submitted By   Submitted On                    
     ──────────────────────────────────────────────────────────────────────────────────────
+      --- Queued experiments ---
       1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
     ──────────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
     
+    >>> experiments_with_active = [
+    ...     {'status': 'RUNNING', 'tag': 'active1', 'experiment_id': 'exp_00',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 0, 'current_instruction': 50, 'total_instructions': 200},
+    ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 1}
+    ... ]
+    >>> _print_queue_table(experiments_with_active, 'ch-abcd-xyzw', print_max=10)
+    <BLANKLINE>
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
+    <BLANKLINE>
+             Status    Tag       Experiment ID   Submitted By   Submitted On                    
+    ────────────────────────────────────────────────────────────────────────────────────────────
+      --- Active experiment ---
+      25 %   RUNNING   active1   exp_00          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+    <BLANKLINE>
+      --- Queued experiments ---
+         1   QUEUED    test1     exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+    ────────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+
+    >>> many_experiments = [
+    ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 1},
+    ...     {'status': 'QUEUED', 'tag': 'test2', 'experiment_id': 'exp_02',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 2},
+    ...     {'status': 'QUEUED', 'tag': 'test3', 'experiment_id': 'exp_03',
+    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
+    ...      'user_id': 'test@test', 'position': 3}
+    ... ]
+    >>> _print_queue_table(many_experiments, 'ch-abcd-xyzw', print_max=2)
+    <BLANKLINE>
+    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
+    <BLANKLINE>
+          Status   Tag     Experiment ID   Submitted By   Submitted On                    
+    ──────────────────────────────────────────────────────────────────────────────────────
+      --- Queued experiments ---
+      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+      2   QUEUED   test2   exp_02          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+    <BLANKLINE>
+      --- showing 2 / 3 queued experiments ---
+    ──────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+
     >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10.5)
     Traceback (most recent call last):
         ...
@@ -997,67 +1052,97 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     if print_max is not None and print_max <= 0:
         raise ValueError("print_max must be None or an integer larger than zero")
 
-    # Print n experiments
-    n = len(experiments) if print_max is None else min(print_max, len(experiments))
-    to_print = experiments[0:n]
-    
+    # Separate the active experiment (position=0) from the queue (position>0)
+    active = next((e for e in experiments if e.get('position') == 0), None)
+    queued = [e for e in experiments if e.get('position') != 0]
+
+    # Print n queued experiments
+    n = len(queued) if print_max is None else min(print_max, len(queued))
+    to_print = queued[0:n]
+
     # Default values for missing fields
     DEFAULT_VALUE = "NA"
-    
-    # Calculate column widths for better formatting
-    headers = ["", "Status", "Tag", "Experiment ID", "Submitted By", "Submitted On"]
-    col_widths = [len(h) for h in headers]
-    
-    # Process data and calculate maximum widths
-    rows = []
-    for experiment in to_print:
-        position = experiment.get('position', DEFAULT_VALUE)
+
+    def _position_label(experiment):
+        status = experiment.get('status', '')
+        if status == 'SUBMITTING':
+            return '>>'
+        elif status in ('RUNNING', 'STOPPING'):
+            total = experiment.get('total_instructions', None)
+            current = experiment.get('current_instruction', None)
+            try:
+                return f'{float(current) / total * 100:.4g} %'
+            except Exception:
+                return DEFAULT_VALUE
+        else:
+            return str(experiment.get('position', DEFAULT_VALUE))
+
+    def _make_row(experiment):
+        position_label = _position_label(experiment)
         status = _fmt_status(experiment.get('status'))
         tag = experiment.get('tag', DEFAULT_VALUE)
         experiment_id = experiment.get('experiment_id', DEFAULT_VALUE)
-        if 'submitted_on' in experiment:
-            submitted_on = _fmt_timestamp(experiment.get('submitted_on'))
-        else:
-            submitted_on = DEFAULT_VALUE
+        submitted_on = _fmt_timestamp(experiment['submitted_on']) if 'submitted_on' in experiment else DEFAULT_VALUE
         submitted_by = experiment.get('user_id', DEFAULT_VALUE)
-        
-        row = [position, status, tag, experiment_id, submitted_by, submitted_on]
+        return [position_label, status, tag, experiment_id, submitted_by, submitted_on]
+
+    # Calculate column widths for better formatting
+    headers = ["", "Status", "Tag", "Experiment ID", "Submitted By", "Submitted On"]
+    col_widths = [len(h) for h in headers]
+
+    # Process data and calculate maximum widths across all experiments
+    rows = []
+    for experiment in to_print:
+        row = _make_row(experiment)
         rows.append(row)
-        
-        # Update column widths (using stripped text for length calculation)
         for i, value in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(_strip_ansi(value)))
-    
+            col_widths[i] = max(col_widths[i], len(_strip_ansi(str(value))))
+
+    active_row = None
+    if active is not None:
+        active_row = _make_row(active)
+        for i, value in enumerate(active_row):
+            col_widths[i] = max(col_widths[i], len(_strip_ansi(str(value))))
+
     # Print header
     sep_with_space = f' {col_separator} '
     header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
 
     separator = line_separator + line_separator.join(line_char * (w + 2) for w in col_widths) + line_separator
 
+    def _print_row(row, right_align_first=False):
+        padded_row = []
+        for i, (value, width) in enumerate(zip(row, col_widths)):
+            visible_len = len(_strip_ansi(str(value)))
+            padding_needed = width - visible_len
+            if i == 0 and right_align_first:
+                padded_value = ' ' * padding_needed + str(value)
+            else:
+                padded_value = str(value) + ' ' * padding_needed
+            padded_row.append(padded_value)
+        print(' ' * indentation + col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator)
+
     print()
-    print(f"Experiments in the queue for chamber '{chamber_id}'. Order is by position, i.e., 1 = next to run")
+    print(f"Active and queued experiments for chamber '{chamber_id}'. Position 1 is the next to run.")
     print()
     print(' ' * indentation + header_row)
     print(' ' * indentation + separator)
-    
-    # Print data rows
-    for row in rows:
-        # Calculate padding for each cell based on visible length
-        padded_row = []
-        for value, width in zip(row, col_widths):
-            visible_len = len(_strip_ansi(value))
-            padding_needed = width - visible_len
-            padded_value = str(value) + ' ' * padding_needed
-            padded_row.append(padded_value)
-        
-        row_str = col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator
-        print(' ' * indentation + row_str)
 
-    if len(to_print) < len(experiments):
+    if active_row is not None:
+        print(' ' * indentation, colored(' --- Active experiment ---', (100,100,100)))
+        _print_row(active_row, right_align_first=True)
         print()
-        print(' ' * indentation, colored(f' --- showing {len(to_print)} / {len(experiments)} experiments ---', (100,100,100)))
+
+    if len(to_print) > 0:
+        print(' ' * indentation, colored(' --- Queued experiments ---', (100,100,100)))
+    for row in rows:
+        _print_row(row, right_align_first=True)
+    if len(to_print) < len(queued):
+        print()
+        print(' ' * indentation, colored(f' --- showing {len(to_print)} / {len(queued)} queued experiments ---', (100,100,100)))
     if len(to_print) == 0:
-        print(' ' * indentation, colored(f'        --- there are no experiments in the queue ---', (100,100,100)))
+        print(' ' * indentation, colored(' --- There are no experiments in the queue ---', (100,100,100)))
+
     print(' ' * indentation + separator)
     print(' ' * indentation + f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
     print()

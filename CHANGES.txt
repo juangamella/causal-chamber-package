@@ -1,3 +1,9 @@
+v0.2.7, 2026-04-26
+-- Changed TM symbol to ® throughout the code.
+-- By default, get_experiments and get_queue prints 10 experiments (from previous default of no limit)"
+-- Updated the README images to the mk2 models of the chambers
+-- Added color formatting for the new experiment status STOPPING and SUBMITTING
+-- get_queue now shows the active job for the chamber
 v0.2.6, 2026-04-10
 -- Values in SET instructions are formatted directly as floats (no rounding)
 v0.2.5, 2026-02-27

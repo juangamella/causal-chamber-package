@@ -42,7 +42,7 @@ from causalchamber.lab.exceptions import LabError, UserError
 
 class API():
     """
-    API client for interacting with the Remote Lab API from Causal Chamber™.
+    API client for interacting with the Remote Lab API from Causal Chamber®.
     
     The class handles authentication and HTTP requests to the API. It manages
     credentials, tracks request timing statistics, and provides error handling
