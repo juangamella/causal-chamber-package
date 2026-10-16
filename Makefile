@@ -66,7 +66,7 @@ venv:
 	( \
 	. venv/bin/activate; \
 	pip install --upgrade pip setuptools; \
-	pip install numpy pandas requests pyyaml termcolor rich Pillow tqdm \
+	pip install numpy pandas requests pyyaml rich Pillow tqdm \
 	)
 
 

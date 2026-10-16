@@ -116,9 +116,9 @@ def login(credentials=None, credentials_file=None, endpoint="https://api.causalc
     endpoint : str, optional
         Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
     verbose : bool, optional
-        If True (default), this will print tables with the status
-        of the available chambers and the 10 latest experiments
-        belonging to the user. If False, nothing is printed.
+        If True (default), this will print your user info (including
+        your credits), your active real-time sessions and (up to 10
+        of) your active experiments. If False, nothing is printed.
 
     Returns
     -------
@@ -239,10 +239,11 @@ class Lab():
             provided. If both are, credentials is used.
         endpoint : str, optional
             Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
-        verbose : bool, optional        
-            If True (default), this will print tables with the status
-            of the available chambers and the 10 latest experiments
-            belonging to the user. If False, nothing is printed.
+        verbose : bool, optional
+            If True (default), this will print your user info
+            (including your credits), your active real-time sessions
+            and (up to 10 of) your active experiments. If False,
+            nothing is printed.
         credentials : tuple of string or None, optional        
             A tuple (<user>, <password>) with the user and password
             for the API. Either credentials or credentials_file
@@ -261,12 +262,48 @@ class Lab():
                         endpoint=endpoint,
                         credentials=credentials)
 
-        # Get available chambers & experiments
-        print("\n\nChambers") if verbose else None
-        _ = self.get_available_chambers(verbose=verbose)
-        print("\n\nExperiments") if verbose else None
-        _ = self.get_experiments(verbose=verbose, print_max=10)
-        
+        # Get the user's account, and print it in a single call (i.e.,
+        # a single output block in Jupyter)
+        account = self.get_account(verbose=False)
+        if verbose:
+            _print("", "", "User info", "", _user_info(account),
+                   "", "", "Active sessions", "", _session_table(account.get('sessions', [])),
+                   "", "", "Active experiments", "",
+                   _active_experiment_table(account.get('experiments', []), print_max=10),
+                   "")
+
+    def get_account(self, verbose=True):
+        """
+        Retrieve the details of your account, including your credits,
+        active real-time sessions and active experiments.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True (default), this will print your user ID, email and
+            available credits. If False, nothing is printed.
+
+        Returns
+        -------
+        dict
+            Dictionary with the account details, including the
+            user_id, email, wallet (with your credits), sessions
+            (active real-time sessions) and experiments (active
+            experiments).
+
+        Raises
+        ------
+        UserError
+            If the credentials are incorrect.
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        response = self._API.make_request('GET', 'account')
+        account = response.json()['account']
+        if verbose:
+            _print("", _user_info(account), "")
+        return account
 
     def get_queue(self, chamber_id, verbose=True, print_max=10):
         """Retrieve the experiments that are waiting in the queue of the
@@ -752,10 +789,7 @@ class ExperimentDataset():
 # backgrounds, given as hex so terminals don't remap them
 _GREEN = '#248f47'
 _TEAL = '#158c8c'
-_BLUE = '#227de6'
 _RED = '#e63f39'
-_AMBER = '#a67411'
-_MAGENTA = '#c24ec2'
 _GREY = '#7d7d7d'
 
 _STATUS_COLORS = {
@@ -765,14 +799,15 @@ _STATUS_COLORS = {
     'EXECUTING': _TEAL,
     'ERROR': _RED,
     'OFFLINE': _RED,
-    # Experiment status
-    'QUEUED': _AMBER,
-    'SUBMITTING': _TEAL,
-    'RUNNING': _BLUE,
-    'STOPPING': _MAGENTA,
-    'FAILED': _RED,
-    'CANCELED': _GREY,
-    'DONE': _GREEN,
+    # Experiment status: the terminal's own palette colors, as in
+    # earlier versions of the package (with termcolor)
+    'QUEUED': 'yellow',
+    'SUBMITTING': 'bright_yellow',
+    'RUNNING': 'green',
+    'STOPPING': 'magenta',
+    'FAILED': 'bright_red',
+    'CANCELED': '#969696',
+    'DONE': 'bright_green',
     }
 
 # Value shown for missing fields
@@ -796,7 +831,7 @@ def _fmt_status(status):
     Examples
     --------
     >>> _fmt_status('DONE').plain, _fmt_status('DONE').style
-    ('DONE', '#248f47')
+    ('DONE', 'bright_green')
     >>> _fmt_status('UNKNOWN').plain, _fmt_status('UNKNOWN').style
     ('UNKNOWN', '')
     >>> _fmt_status(None).plain
@@ -832,6 +867,42 @@ def _cell(value):
     """Return a table cell for the given value, as plain text (i.e.,
     not parsed as rich markup), or 'NA' if the value is None."""
     return Text(_NA if value is None else str(value))
+
+
+def _hint(text):
+    """
+    Return a hint shown below a section of the dashboard (e.g., how to
+    top up the credits), indented and preceded by the pink prompt of
+    the import banner. The text is plain (not parsed as rich markup).
+
+    Examples
+    --------
+    >>> _hint('Call rlab.topup() to top up your credits.').plain
+    '  >>> Call rlab.topup() to top up your credits.'
+    """
+    return Text.from_markup(f"  {_PROMPT} ") + Text(text)
+
+
+def _truncate(text, max_length=22):
+    """
+    Return the given text, trimmed at the end with '...' if it is
+    longer than max_length characters, so that the result is at most
+    max_length characters long. None is returned unchanged.
+
+    Examples
+    --------
+    >>> _truncate('user123')
+    'user123'
+    >>> _truncate('a.very.long.username@example.com')
+    'a.very.long.usernam...'
+    >>> len(_truncate('a.very.long.username@example.com'))
+    22
+    >>> _truncate(None) is None
+    True
+    """
+    if text is None or len(text) <= max_length:
+        return text
+    return text[:max_length - 3] + '...'
 
 
 class _Table():
@@ -977,6 +1048,142 @@ def _chamber_table(chambers):
     return table
 
 
+def _available_credits(wallet):
+    """
+    Return the credits available in a wallet as a string: its credits
+    minus its credit floor, 'unlimited' if it has no credit floor, or
+    'NA' if the wallet lacks the necessary fields.
+
+    Examples
+    --------
+    >>> _available_credits({'credits': 3600, 'credit_floor': 0})
+    '3600'
+    >>> _available_credits({'credits': 100, 'credit_floor': -500})
+    '600'
+    >>> _available_credits({'credits': 3600, 'credit_floor': None})
+    'unlimited'
+    >>> _available_credits({})
+    'NA'
+    """
+    if wallet.get('credits') is None or 'credit_floor' not in wallet:
+        return _NA
+    elif wallet['credit_floor'] is None:
+        return 'unlimited'
+    else:
+        return str(wallet['credits'] - wallet['credit_floor'])
+
+
+def _user_info(account):
+    """
+    Return a renderable with the user's ID, name, email, institution
+    and available credits, followed by a note on how to top up the
+    credits.
+
+    Parameters
+    ----------
+    account : dict
+        The account, as returned by GET /v0/account, with keys
+        'user_id', 'name', 'email', 'institution' and 'wallet'.
+
+    Returns
+    -------
+    rich renderable
+
+    Examples
+    --------
+    >>> account = {'user_id': 'user123', 'name': 'Ada Lovelace', 'email': 'user123@example.com',
+    ...            'institution': 'ETH Zurich', 'wallet': {'credits': 3600, 'credit_floor': 0}}
+    >>> _print(_user_info(account))
+          user id   user123
+             name   Ada Lovelace
+            email   user123@example.com
+      institution   ETH Zurich
+    <BLANKLINE>
+          credits   3600
+    <BLANKLINE>
+      ... Call rlab.topup() to top up your credits.
+
+    Missing fields are shown as NA.
+
+    >>> _print(_user_info({'user_id': 'user123', 'name': None, 'email': None, 'institution': None,
+    ...                    'wallet': {'credits': 0, 'credit_floor': None}}))
+          user id   user123
+             name   NA
+            email   NA
+      institution   NA
+    <BLANKLINE>
+          credits   unlimited
+    <BLANKLINE>
+      ... Call rlab.topup() to top up your credits.
+    """
+    rows = [("user id", account.get('user_id')),
+            ("name", account.get('name')),
+            ("email", account.get('email')),
+            ("institution", account.get('institution')),
+            ("credits", _available_credits(account.get('wallet') or {}))]
+    width = max(len(label) for label, _ in rows)
+    # Field names are dimmed, right-aligned; values left-aligned
+    lines = [Text("  ") + Text(label.rjust(width), style='dim') + Text("   ") + _cell(value)
+             for label, value in rows]
+    # Blank line separating the credits from the user's details
+    lines.insert(-1, Text(""))
+    return Group(*lines, "", _hint("Call rlab.topup() to top up your credits."))
+
+
+def _session_table(sessions):
+    """
+    Return a renderable with a table of the user's active real-time
+    sessions, followed by a note on the timezone of the dates and (if
+    there are sessions) a note on how to stop them.
+
+    Parameters
+    ----------
+    sessions : list of dict
+        List of dictionaries containing session information, as in
+        the 'sessions' field returned by GET /v0/account. Each
+        dictionary should have keys: 'session_id', 'chamber_id',
+        'chamber_config' and 'expires_on'.
+
+    Returns
+    -------
+    rich renderable
+
+    Examples
+    --------
+    >>> sessions = [{'session_id': 'a778b917-7a05-4b6c-bca7-58805cc1e971', 'chamber_id': 'tt-test-virt',
+    ...              'chamber_config': 'standard', 'expires_on': 1234567890}]
+    >>> _print(_session_table(sessions)) # doctest: +NORMALIZE_WHITESPACE
+          Session ID                             Chamber ID     Config     Expires On
+    ───────────────────────────────────────────────────────────────────────────────────────────────────────
+      ●   a778b917-7a05-4b6c-bca7-58805cc1e971   tt-test-virt   standard   Sat, Feb 14, 2009 00:31:30 CET
+    ───────────────────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+      ... Stop an active session with rlab.stop_session(<session_id>).
+
+    >>> _print(_session_table([])) # doctest: +NORMALIZE_WHITESPACE
+         Session ID   Chamber ID   Config   Expires On
+    ────────────────────────────────────────────────────
+      --- No active sessions ---
+    ────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    """
+    table = _Table(["", "Session ID", "Chamber ID", "Config", "Expires On"])
+    for session in sessions:
+        expires_on = session.get('expires_on', None)
+        # A blinking green circle marks the session as active
+        table.add_row(Text("●", style=f"blink {_GREEN}"),
+                      session.get('session_id'),
+                      session.get('chamber_id'),
+                      session.get('chamber_config'),
+                      _NA if expires_on is None else _fmt_timestamp(expires_on))
+    if len(sessions) == 0:
+        table.add_label("--- No active sessions ---")
+        return Group(table, _datetime_note())
+    return Group(table, _datetime_note(), "",
+                 _hint("Stop an active session with rlab.stop_session(<session_id>)."))
+
+
 def _print_chamber_table(chambers):
     """
     Print a formatted table of chamber information.
@@ -1022,7 +1229,7 @@ def _check_print_max(print_max):
         raise ValueError("print_max must be None or an integer larger than zero")
 
 
-def _experiment_table(experiments, print_max=None, empty_message=None):
+def _experiment_table(experiments, print_max=None):
     """
     Return a renderable with a table of experiment information,
     followed by a note on the timezone of the dates.
@@ -1038,10 +1245,6 @@ def _experiment_table(experiments, print_max=None, empty_message=None):
     print_max : int or None, optional
         Maximum number of experiments to print. If None, all experiments
         are printed. Default is None.
-    empty_message : str or None, optional
-        If there are no experiments, the message is shown in the
-        table (in grey), e.g., '--- No active experiments ---'. If
-        None (default), the table is left empty.
 
     Returns
     -------
@@ -1056,25 +1259,117 @@ def _experiment_table(experiments, print_max=None, empty_message=None):
     """
     _check_print_max(print_max)
     n = len(experiments) if print_max is None else min(print_max, len(experiments))
-    table = _Table(["Status", "Progress", "Tag", "Experiment ID", "Chamber ID", "Config", "Submitted On"])
+    table = _Table(_EXPERIMENT_HEADERS)
     for experiment in experiments[0:n]:
-        submitted_on = experiment.get('submitted_on', None)
-        table.add_row(_fmt_status(experiment.get('status')),
-                      _fmt_progress(experiment),
-                      _cell(experiment.get('tag')),
-                      _cell(experiment.get('experiment_id')),
-                      _cell(experiment.get('chamber_id')),
-                      _cell(experiment.get('config')),
-                      _NA if submitted_on is None else _fmt_timestamp(submitted_on))
-    if len(experiments) == 0 and empty_message is not None:
-        table.add_label(f"--- {empty_message} ---")
-    elif n < len(experiments):
+        _add_experiment_row(table, experiment)
+    if n < len(experiments):
         table.add_label("")
         table.add_label(f"--- showing {n} / {len(experiments)} experiments ---")
     return Group(table, _datetime_note())
 
 
-def _print_experiment_table(experiments, print_max=None, empty_message=None):
+def _active_experiment_table(experiments, print_max=None):
+    """
+    Return a renderable with a table of the user's active
+    experiments, as in the 'experiments' field returned by GET
+    /v0/account: the in-flight experiments (i.e., SUBMITTING, RUNNING
+    or STOPPING) on top, followed by the queued ones. It is followed
+    by a note on the timezone of the dates, and a note on how to see
+    all experiments.
+
+    Parameters
+    ----------
+    experiments : list of dict
+        List of dictionaries containing experiment information (see
+        _experiment_table).
+    print_max : int or None, optional
+        Maximum number of queued experiments to print; the in-flight
+        experiments are always printed. If None, all experiments are
+        printed. Default is None.
+
+    Returns
+    -------
+    rich renderable
+
+    Raises
+    ------
+    TypeError
+        If print_max is not an integer or None.
+    ValueError
+        If print_max is less than or equal to zero.
+
+    Examples
+    --------
+    >>> experiment = {'status': 'QUEUED', 'tag': 'test', 'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
+    >>> experiments = [dict(experiment, experiment_id=f'exp_0{i}') for i in range(1, 4)]
+    >>> experiments.append(dict(experiment, experiment_id='exp_04', status='RUNNING',
+    ...                         total_instructions=200, current_instruction=50))
+    >>> _print(_active_experiment_table(experiments, print_max=2)) # doctest: +NORMALIZE_WHITESPACE
+      Status    Progress   Tag    Experiment ID   Chamber ID   Config     Submitted On
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+      --- In-flight experiments ---
+      RUNNING   25 %       test   exp_04          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
+    <BLANKLINE>
+      --- Queued experiments ---
+      QUEUED    NA         test   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
+      QUEUED    NA         test   exp_02          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
+    <BLANKLINE>
+      --- showing 2 / 3 queued experiments ---
+    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+      ... Call rlab.get_experiments() to see all your experiments.
+
+    >>> _print(_active_experiment_table([])) # doctest: +NORMALIZE_WHITESPACE
+      Status   Progress   Tag   Experiment ID   Chamber ID   Config   Submitted On
+    ────────────────────────────────────────────────────────────────────────────────
+      --- No active experiments ---
+    ────────────────────────────────────────────────────────────────────────────────
+     Date/time in your machine's local timezone — current time = ...
+    <BLANKLINE>
+      ... Call rlab.get_experiments() to see all your experiments.
+    """
+    _check_print_max(print_max)
+    in_flight = [e for e in experiments if e.get('status') != 'QUEUED']
+    queued = [e for e in experiments if e.get('status') == 'QUEUED']
+    n = len(queued) if print_max is None else min(print_max, len(queued))
+    table = _Table(_EXPERIMENT_HEADERS)
+    if len(in_flight) > 0:
+        table.add_label("--- In-flight experiments ---")
+        for experiment in in_flight:
+            _add_experiment_row(table, experiment)
+        if len(queued) > 0:
+            table.add_label("")
+    if len(queued) > 0:
+        table.add_label("--- Queued experiments ---")
+        for experiment in queued[0:n]:
+            _add_experiment_row(table, experiment)
+        if n < len(queued):
+            table.add_label("")
+            table.add_label(f"--- showing {n} / {len(queued)} queued experiments ---")
+    if len(experiments) == 0:
+        table.add_label("--- No active experiments ---")
+    return Group(table, _datetime_note(), "",
+                 _hint("Call rlab.get_experiments() to see all your experiments."))
+
+
+def _add_experiment_row(table, experiment):
+    """Add a row with the given experiment to a table with the
+    columns in _EXPERIMENT_HEADERS."""
+    submitted_on = experiment.get('submitted_on', None)
+    table.add_row(_fmt_status(experiment.get('status')),
+                  _fmt_progress(experiment),
+                  experiment.get('tag'),
+                  experiment.get('experiment_id'),
+                  experiment.get('chamber_id'),
+                  experiment.get('config'),
+                  _NA if submitted_on is None else _fmt_timestamp(submitted_on))
+
+
+_EXPERIMENT_HEADERS = ["Status", "Progress", "Tag", "Experiment ID", "Chamber ID", "Config", "Submitted On"]
+
+
+def _print_experiment_table(experiments, print_max=None):
     """
     Print a formatted table of experiment information.
 
@@ -1086,10 +1381,6 @@ def _print_experiment_table(experiments, print_max=None, empty_message=None):
     print_max : int or None, optional
         Maximum number of experiments to print. If None, all experiments
         are printed. Default is None.
-    empty_message : str or None, optional
-        If there are no experiments, the message is shown in the
-        table (in grey), e.g., '--- No active experiments ---'. If
-        None (default), the table is left empty.
 
     Raises
     ------
@@ -1131,18 +1422,6 @@ def _print_experiment_table(experiments, print_max=None, empty_message=None):
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
 
-    If there are no experiments, the table is empty, or shows the
-    given empty_message.
-
-    >>> _print_experiment_table([], empty_message="No active experiments") # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-      Status   Progress   Tag   Experiment ID   Chamber ID   Config   Submitted On
-    ────────────────────────────────────────────────────────────────────────────────
-      --- No active experiments ---
-    ────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
     >>> _print_experiment_table(experiments, print_max=10.5)
     Traceback (most recent call last):
         ...
@@ -1160,7 +1439,7 @@ def _print_experiment_table(experiments, print_max=None, empty_message=None):
         ...
     ValueError: print_max must be None or an integer larger than zero
     """
-    _print("", _experiment_table(experiments, print_max, empty_message), "")
+    _print("", _experiment_table(experiments, print_max), "")
 
 
 def _queue_table(experiments, chamber_id, print_max=None):
@@ -1217,7 +1496,7 @@ def _queue_table(experiments, chamber_id, print_max=None):
                       _fmt_status(status),
                       experiment.get('tag'),
                       experiment.get('experiment_id'),
-                      experiment.get('user_id'),
+                      _truncate(experiment.get('user_id')),
                       _NA if submitted_on is None else _fmt_timestamp(submitted_on))
 
     table = _Table(["", "Status", "Tag", "Experiment ID", "Submitted By", "Submitted On"], right_justified=[0])
