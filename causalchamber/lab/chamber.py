@@ -95,7 +95,7 @@ class Chamber():
             ```
             Either credentials or credentials_file must be
             provided. If both are, credentials is used.
-        endpoint : str or None, optional
+        endpoint : str, optional
             Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
         verbose : int, optional
             Verbosity level for status messages. 0 for silent, 1 for normal
@@ -958,8 +958,9 @@ def _parse_multipart_response(content, content_type):
     Raises
     ------
     ValueError
-        If no boundary is found in the content_type header.
-    
+        If no boundary is found in the content_type header, or an
+        image part is not base64 encoded.
+
     Examples
     --------
     # TODO: add some fixed content to the doctest environment and test this
@@ -998,21 +999,16 @@ def _parse_multipart_response(content, content_type):
             csv_data = pd.read_csv(io.StringIO(csv_content))
             
         elif content_type == 'image/jpeg':
-            # Extract image data
-            img_content = part.get_payload()
-            
-            # Check if content is base64 encoded
-            transfer_encoding = part.get('Content-Transfer-Encoding', '')
-            if transfer_encoding == 'base64':
-                img_content = base64.b64decode(img_content)
-            elif isinstance(img_content, str):
-                # If it's a string, it might be base64 encoded
-                try:
-                    img_content = base64.b64decode(img_content)
-                except:
-                    # If base64 decode fails, treat as raw bytes
-                    img_content = img_content.encode()
-            
+            # Extract image data, which is always base64 encoded
+            # (with or without a Content-Transfer-Encoding header).
+            # Whitespace (e.g., line breaks) is removed so the strict
+            # decoding below only fails on non-base64 content.
+            img_content = ''.join(part.get_payload().split())
+            try:
+                img_content = base64.b64decode(img_content, validate=True)
+            except ValueError as e:
+                raise ValueError(f"Could not decode image in response; image parts must be base64 encoded. Error details: {e}")
+
             # Load image using PIL
             img = Image.open(io.BytesIO(img_content))
             images.append(np.array(img))
