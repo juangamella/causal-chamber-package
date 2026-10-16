@@ -21,4 +21,4 @@
 # SOFTWARE.
 
 from .chamber import Chamber
-from .lab import Lab
+from .lab import Lab, login

@@ -7,6 +7,12 @@ __all__ = ["datasets", "utils", "ground_truth", "simulators"]
 # Welcome message, displayed on import in interactive sessions
 # (Jupyter, IPython or a terminal) unless CAUSALCHAMBER_QUIET is set
 
+# Python prompt (rich markup) shown before code in printed messages, in
+# a mid-luminance pink with similar contrast (~4:1) on light and dark
+# backgrounds, given as hex so terminals don't remap it. The code
+# itself keeps the default color.
+_PROMPT = "[#e03892]>>>[/]"
+
 _CITATION = r"""@article{gamella2025chamber,
   author={Gamella, Juan L. and Peters, Jonas and B{\"u}hlmann, Peter},
   title={Causal chambers as a real-world physical testbed for {AI} methodology},
@@ -40,10 +46,10 @@ def _print_welcome_message():
     from rich.table import Table
 
     try:
-        title = f"Causal Chamber® v{version('causalchamber')}"
+        title = f"  Causal Chamber® v{version('causalchamber')}"
     except PackageNotFoundError:
         # e.g., when running from source without installing the package
-        title = "Causal Chamber®"
+        title = "  Causal Chamber®"
     email = "support@causalchamber.ai"
     docs = "docs.causalchamber.ai"
     # Two columns: section names (right-aligned) and their text
@@ -55,12 +61,9 @@ def _print_welcome_message():
     sections.add_column(justify="left")
     sections.add_row(
         "Login",
-        # The prompts are in a mid-luminance pink with similar
-        # contrast (~4:1) on light and dark backgrounds, given as hex so
-        # terminals don't remap it. The code keeps the default color.
         "To log in to the Remote Lab, call\n\n"
-        "  [#e03892]>>>[/] import causalchamber.lab as lab\n"
-        "  [#e03892]>>>[/] lab.login()",
+        f"  {_PROMPT} from causalchamber import lab\n"
+        f"  {_PROMPT} rlab = lab.login()",
     )
     sections.add_row(
         "Documentation", f"Guides and examples at [link=https://{docs}]{docs}[/link]"
@@ -84,7 +87,7 @@ def _print_welcome_message():
             "",
             Padding(sections, (0, 0, 0, 2), expand=False),
             "",
-            "  [dim italic]Set the env. variable CAUSALCHAMBER_QUIET=1 to hide this message.[/dim italic]",
+            "  [dim]Set the env. variable CAUSALCHAMBER_QUIET=1 to hide this message.[/dim]",
             "",
         )
     )

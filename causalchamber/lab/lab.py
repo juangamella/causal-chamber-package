@@ -44,6 +44,171 @@ from causalchamber.lab.utils import download_and_extract
 from causalchamber.lab.chamber import Batch
 from causalchamber.lab.api import API
 from causalchamber.lab.exceptions import LabError, UserError
+from causalchamber import _is_interactive, _PROMPT
+
+# --------------------------------------------------------------------
+# Login
+
+_ENV_USER = "CAUSALCHAMBER_USER"
+_ENV_PASSWORD = "CAUSALCHAMBER_PASSWORD"
+_SIGNUP = "forms.causalchamber.ai/signup"
+_REGEN = "forms.causalchamber.ai/regen"
+
+# Instructions shown when no credentials are found, as rich markup
+# (printed formatted in interactive sessions, as plain text otherwise)
+_LOGIN_HELP = f"""\
+Please provide your credentials in one of the following ways.
+
+[bold]Credentials file[/bold]
+
+  Pass the path to your credentials file
+
+    {_PROMPT} rlab = lab.login(credentials_file=[dim]"path/to/credentials_file"[/dim])
+
+  where the file contains the lines
+
+    [dim]\\[api_keys]
+    user = <user>
+    password = <password>[/dim]
+
+[bold]Environment variables[/bold]
+
+  Set [dim]{_ENV_USER}[/dim] and [dim]{_ENV_PASSWORD}[/dim] before
+  starting Python or Jupyter, e.g.,
+
+    [dim]export {_ENV_USER}=<user>
+    export {_ENV_PASSWORD}=<password>[/dim]
+
+[bold]No credentials?[/bold]
+
+  Get your credentials at [link=https://{_SIGNUP}]{_SIGNUP}[/link].
+
+  Lost them? Get new ones at [link=https://{_REGEN}]{_REGEN}[/link].
+"""
+
+
+def login(credentials=None, credentials_file=None, endpoint="https://api.causalchamber.ai/v0", verbose=True):
+    """Log in to the Remote Lab, returning a lab.Lab object to interact with it.
+
+    The credentials are taken, in order of precedence, from the
+    credentials argument, the credentials_file argument, or the
+    environment variables CAUSALCHAMBER_USER and
+    CAUSALCHAMBER_PASSWORD.
+
+    If no credentials are found, an exception is raised explaining
+    how to provide them. In interactive sessions (e.g., Jupyter or a
+    terminal) the explanation is also printed in a readable format.
+
+    Parameters
+    ----------
+    credentials : tuple of string or None, optional
+        A tuple (<user>, <password>) with the user and password for
+        the API.
+    credentials_file : str or None, optional
+        Path to the configuration file containing API
+        credentials. The file should contain the following lines:
+        ```
+        [api_keys]
+        user = <YOUR USERNAME>
+        password = <YOUR PASSWORD>
+        ```
+    endpoint : str, optional
+        Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
+    verbose : bool, optional
+        If True (default), this will print tables with the status
+        of the available chambers and the 10 latest experiments
+        belonging to the user. If False, nothing is printed.
+
+    Returns
+    -------
+    Lab
+        The lab.Lab object to interact with the Remote Lab.
+
+    Raises
+    ------
+    UserError
+        If no credentials are provided, only one of the environment
+        variables is set, or the credentials are incorrect.
+    LabError
+        If no connection to the API can be established or an
+        internal error ocurred on our side.
+
+    Examples
+    --------
+    >>> _ = os.environ.pop('CAUSALCHAMBER_USER', None)
+    >>> _ = os.environ.pop('CAUSALCHAMBER_PASSWORD', None)
+    >>> login()
+    Traceback (most recent call last):
+        ...
+    causalchamber.lab.exceptions.UserError: (code 0) No credentials found. ...
+
+    Setting only one of the environment variables raises an error.
+
+    >>> os.environ['CAUSALCHAMBER_USER'] = 'username'
+    >>> login()
+    Traceback (most recent call last):
+        ...
+    causalchamber.lab.exceptions.UserError: (code 0) The environment variable CAUSALCHAMBER_USER is set but CAUSALCHAMBER_PASSWORD is not. ...
+
+    With both set, the credentials are passed on to lab.Lab, which
+    here fails to connect to a non-existing endpoint.
+
+    >>> os.environ['CAUSALCHAMBER_PASSWORD'] = 'password'
+    >>> login(endpoint='http://localhost:9999')
+    Traceback (most recent call last):
+        ...
+    causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. ...
+    >>> _ = os.environ.pop('CAUSALCHAMBER_USER', None)
+    >>> _ = os.environ.pop('CAUSALCHAMBER_PASSWORD', None)
+    """
+    # If no credentials are passed as arguments, look in the environment variables
+    if credentials is None and credentials_file is None:
+        credentials = _credentials_from_env()
+    # If none were found, explain how to provide them
+    if credentials is None and credentials_file is None:
+        if _is_interactive():
+            _print_login_help()
+            raise UserError(0, "No credentials found. See the instructions above.")
+        else:
+            from rich.text import Text
+            raise UserError(0, "No credentials found. " + Text.from_markup(_LOGIN_HELP).plain)
+    return Lab(credentials_file=credentials_file,
+               endpoint=endpoint,
+               verbose=verbose,
+               credentials=credentials)
+
+
+def _credentials_from_env():
+    """Return the credentials (user, password) from the environment
+    variables, or None if neither is set. Empty variables count as not
+    set.
+
+    Raises
+    ------
+    UserError
+        If only one of the two environment variables is set.
+
+    """
+    user = os.environ.get(_ENV_USER) or None
+    password = os.environ.get(_ENV_PASSWORD) or None
+    if user is None and password is None:
+        return None
+    elif user is None or password is None:
+        is_set, not_set = (_ENV_USER, _ENV_PASSWORD) if password is None else (_ENV_PASSWORD, _ENV_USER)
+        raise UserError(0, f"The environment variable {is_set} is set but {not_set} is not. Set both, or pass your credentials as arguments to login.")
+    else:
+        return (user, password)
+
+
+def _print_login_help():
+    """Print the instructions to provide the credentials, formatted with rich."""
+    from rich.console import Console
+    note = f"\n{_LOGIN_HELP}"
+    # Indent every (non-empty) line by two spaces
+    note = "\n".join("  " + line if line else line for line in note.splitlines())
+    console = Console(highlight=False)
+    console.print("\n" + note + "\n\n\n")
+
 
 class Lab():
     """
