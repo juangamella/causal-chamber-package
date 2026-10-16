@@ -104,30 +104,37 @@ class Lab():
 
     def get_queue(self, chamber_id, verbose=True, print_max=10):
         """Retrieve the experiments that are waiting in the queue of the
-        given chamber.
-        
+        given chamber, including the experiment it is currently
+        executing (if any).
+
         Parameters
         ----------
         chamber_id : str
             The unique identifier of the chamber.
-        verbose : bool, optional       
+        verbose : bool, optional
             If True (default), this will print a table with the
             experiments in the queue, their position and the user to
             whom they belong.
         print_max : int or None, optional
-            Maximum number of experiments to print (if
+            Maximum number of queued experiments to print (if
             verbose=True). If None, all queued experiments are
-            printed. Default is None.
-        
+            printed. Default is 10.
+
         Returns
         -------
-        dict
-            Dictionary containing the experiment details including
-            status, chamber_id, config, user, submission time, and
-            other metadata.
+        list of dict
+            List of dictionaries containing the details of each
+            experiment, including status, chamber_id, config, user,
+            submission time, and other metadata, sorted by queue
+            position. The experiment currently being executed (if any)
+            has position 0.
 
         Raises
         ------
+        TypeError
+            If verbose=True and print_max is not an integer or None.
+        ValueError
+            If verbose=True and print_max is not larger than zero.
         UserError
             If the credentials are incorrect, the given chamber_id does
             not exist, or the corresponding chamber is not in queue mode.        
@@ -186,14 +193,14 @@ class Lab():
         print_max : int or None, optional
             Maximum number of experiments to print (if
             verbose=True). If None, all experiments belonging to the
-            user are printed. Default is None.
+            user are printed. Default is 10.
 
         Raises
         ------
         TypeError
-            If print_max is not an integer.
+            If verbose=True and print_max is not an integer or None.
         ValueError
-            If print_max is not an integer larger than zero.
+            If verbose=True and print_max is not larger than zero.
         
         Returns
         -------
@@ -294,13 +301,21 @@ class Lab():
         
         Returns
         -------
-        pandas.DataFrame
-            DataFrame containing the experimental observations.
-        
+        ExperimentDataset
+            The downloaded dataset, which gives access to the
+            experimental observations (ExperimentDataset.dataframe)
+            and images, if any (ExperimentDataset.image_arrays or
+            ExperimentDataset.image_iterator).
+
         Raises
         ------
         UserError
             If the experiment is not in 'DONE' status.
+        FileNotFoundError
+            If the root directory does not exist.
+        requests.HTTPError
+            If the data could not be downloaded, e.g., because the
+            download link has expired.
 
         """
         experiment = self.get_experiment(experiment_id)
@@ -446,8 +461,6 @@ class ExperimentDataset():
             SHA256 checksum for data verification.
         root : str or pathlib.Path
             Root directory where the data will be stored.
-        download : bool, optional
-            Whether to download the data immediately. Default is True.
         verbose : bool, optional
             If True, a download progress bar is shown. If False no
             outputs are produced. Defauls to True.
@@ -919,17 +932,23 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
 
 def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, col_separator=' ', line_separator = '─', line_char = '─'):
     """
-    Print a formatted table of experiment information.
-    
+    Print a formatted table with the queue of a chamber.
+
     Parameters
     ----------
     experiments : list of dict
         List of dictionaries containing experiment information. Each dictionary
-        should have keys: 'status', 'tag', 'experiment_id', 'chamber_id',
-        'config', and 'submitted_on'.
+        should have keys: 'status', 'tag', 'experiment_id', 'user_id',
+        'submitted_on' and 'position', where position 0 denotes the
+        experiment currently being executed. Running experiments can
+        also have the keys 'current_instruction' and
+        'total_instructions' to display their progress.
+    chamber_id : str
+        The unique identifier of the chamber, shown in the table title.
     print_max : int or None, optional
-        Maximum number of experiments to print. If None, all experiments
-        are printed. Default is None.
+        Maximum number of queued experiments to print; the experiment
+        currently being executed is always printed. If None, all
+        experiments are printed. Default is None.
     indentation : int, optional
         Number of spaces to indent the table. Default is 0.
     col_separator : str, optional

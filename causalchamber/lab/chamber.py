@@ -167,7 +167,10 @@ class Chamber():
         ------
         TypeError
             If target is not a string.
-        UserError        
+        ValueError
+            If value cannot be converted to float, or is not finite
+            (i.e., NaN or infinity).
+        UserError
             If the target does not exist in this chamber/configuration
             or value is invalid (code 400), or if the chamber is
             currently busy restarting or executing other instructoins
@@ -206,10 +209,10 @@ class Chamber():
         Raises
         ------
         TypeError
-            If n or delay are not numbers.
+            If n or delay are not integers.
         ValueError
             If n is not larger than zero or delay is negative.
-        UserError        
+        UserError
             Returned if the chamber is currently busy restarting or executing
             other instructions (code 409).
         LabError
@@ -478,7 +481,10 @@ class Batch():
         ------
         TypeError
             If target is not a string.
-        
+        ValueError
+            If value cannot be converted to float, or is not finite
+            (i.e., NaN or infinity).
+
         Examples
         --------
         >>> batch = Batch(None)
@@ -518,7 +524,7 @@ class Batch():
         Raises
         ------
         TypeError
-            If milliseconds is not a number.
+            If milliseconds is not an integer.
         ValueError
             If milliseconds is not positive or milliseconds is larger
             than limit.
@@ -553,17 +559,17 @@ class Batch():
         ----------
         n : int
             Number of measurements to collect. Must be positive.
-        delay : int or float, optional
+        delay : int, optional
             Delay between consecutive measurements in milliseconds (default is 0).
-        
+
         Returns
         -------
         None
-        
+
         Raises
         ------
         TypeError
-            If n or delay are not numbers.
+            If n or delay are not integers.
         ValueError
             If n is not positive or delay is negative.
         
@@ -610,7 +616,7 @@ class Batch():
         n : int, optional
             Number of measurements to perform after setting the values
             in each row. Default is 1.
-        delay : float, optional
+        delay : int, optional
             Delay (in milliseconds) between measurements. Default is 0.
         wait : int or None, optional
             Duration of the WAIT instruction (in milliseconds) between

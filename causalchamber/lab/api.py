@@ -205,8 +205,8 @@ class API():
         ValueError
             If method is not 'GET' or 'POST'.
         UserError
-            If the API returns a 400, 401, 403 or 409 HTTP error, indicating a
-            client-side error.
+            If the API returns a 400, 401, 402, 403, 409 or 422 HTTP
+            error, indicating a client-side error.
         LabError
             If it is impossible to connect to the API, the request
             fails for any other reason (e.g., a timeout or an
@@ -274,7 +274,7 @@ class API():
             return response
 
         # Otherwise, parse the error codes            
-        if response.status_code in [400, 401, 403, 409, 422]:
+        if response.status_code in [400, 401, 402, 403, 409, 422]:
             raise UserError.from_response(response)
         else:
             raise LabError.from_response(response)

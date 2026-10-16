@@ -451,7 +451,7 @@ def graph(chamber, configuration):
     Returns
     -------
     DataFrame
-        A pandas DataFrame representing the adjacency matrix of the graph, with variables as both index and columns. An entry `[from,to] != 1` denotes the edge `from -> to`.
+        A pandas DataFrame representing the adjacency matrix of the graph, with variables as both index and columns. An entry `[from,to] != 0` denotes the edge `from -> to`.
 
     >>> int(graph('lt', 'standard').values.sum())
     57
