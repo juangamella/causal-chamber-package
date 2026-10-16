@@ -30,10 +30,11 @@ import os
 from datetime import datetime
 import time
 import numbers
-import re
 
 # Third-party packages
-from termcolor import colored, cprint
+from rich.console import Console, Group
+from rich.measure import Measurement
+from rich.text import Text
 import numpy as np
 import pandas as pd
 import yaml
@@ -747,43 +748,181 @@ class ExperimentDataset():
 # --------------------------------------------------------------------
 # Auxiliary functions
 
+# Mid-tone colors with similar contrast (~4:1) on light and dark
+# backgrounds, given as hex so terminals don't remap them
+_GREEN = '#248f47'
+_TEAL = '#158c8c'
+_BLUE = '#227de6'
+_RED = '#e63f39'
+_AMBER = '#a67411'
+_MAGENTA = '#c24ec2'
+_GREY = '#7d7d7d'
+
 _STATUS_COLORS = {
     # Chamber status
-    'READY': 'light_green',
-    'LOADING': 'light_cyan', 
-    'EXECUTING': 'light_cyan',
-    'ERROR': 'light_red',
-    'OFFLINE': 'light_red',
+    'READY': _GREEN,
+    'LOADING': _TEAL,
+    'EXECUTING': _TEAL,
+    'ERROR': _RED,
+    'OFFLINE': _RED,
     # Experiment status
-    'QUEUED': 'yellow',
-    'SUBMITTING': 'light_yellow',
-    'RUNNING': 'green',
-    'STOPPING': 'magenta',#(255, 165, 0),
-    'FAILED': 'light_red',
-    'CANCELED': (150,150,150),
-    'DONE': 'light_green'
+    'QUEUED': _AMBER,
+    'SUBMITTING': _TEAL,
+    'RUNNING': _BLUE,
+    'STOPPING': _MAGENTA,
+    'FAILED': _RED,
+    'CANCELED': _GREY,
+    'DONE': _GREEN,
     }
+
+# Value shown for missing fields
+_NA = "NA"
+
 
 def _fmt_status(status):
     """
     Format a status string with the appropriate color.
-    
+
     Parameters
     ----------
     status : str
         Status string to format (e.g., 'READY', 'RUNNING', 'DONE').
-    
+
     Returns
     -------
-    str
-        Colored status string using ANSI escape codes.
-    
+    rich.text.Text
+        The status, styled with its color (if it has one).
+
     Examples
     --------
-    >>> _fmt_status('DONE')
-    'DONE'
+    >>> _fmt_status('DONE').plain, _fmt_status('DONE').style
+    ('DONE', '#248f47')
+    >>> _fmt_status('UNKNOWN').plain, _fmt_status('UNKNOWN').style
+    ('UNKNOWN', '')
+    >>> _fmt_status(None).plain
+    'NA'
     """
-    return colored(status, _STATUS_COLORS.get(status, None))
+    if status is None:
+        return Text(_NA)
+    return Text(str(status), style=_STATUS_COLORS.get(status, ''))
+
+
+def _fmt_progress(experiment):
+    """
+    Return the percentage of instructions executed by an experiment, or
+    'NA' if it is not available.
+
+    Examples
+    --------
+    >>> _fmt_progress({'total_instructions': 6002, 'current_instruction': 5429})
+    '90.45 %'
+    >>> _fmt_progress({'total_instructions': 100, 'current_instruction': None})
+    'NA'
+    >>> _fmt_progress({})
+    'NA'
+    """
+    try:
+        current = float(experiment['current_instruction'])
+        return f"{current / experiment['total_instructions'] * 100:.4g} %"
+    except Exception:
+        return _NA
+
+
+def _cell(value):
+    """Return a table cell for the given value, as plain text (i.e.,
+    not parsed as rich markup), or 'NA' if the value is None."""
+    return Text(_NA if value is None else str(value))
+
+
+class _Table():
+    """
+    A rich renderable for tables in the style of this package: the
+    column headers, a horizontal rule, the rows and a closing
+    horizontal rule. The rules span the whole width of the table; there
+    are two spaces before the first and after the last column, and
+    three between columns. Cells never wrap.
+
+    Besides rows, the table can contain labels: lines that span the
+    whole table (e.g., '--- showing 10 / 20 experiments ---'), shown in
+    grey and indented like the rows.
+    """
+
+    def __init__(self, headers, right_justified=()):
+        """
+        Parameters
+        ----------
+        headers : list of str
+            The column headers.
+        right_justified : collection of int, optional
+            Indices of the columns that are right-justified. Default is
+            none, i.e., all columns are left-justified.
+        """
+        self._headers = [Text(h) for h in headers]
+        self._right_justified = set(right_justified)
+        self._lines = []  # each entry is a list of cells (a row) or a Text (a label)
+
+    def add_row(self, *cells):
+        """Add a row; cells which are not rich Text are converted to
+        plain text (i.e., not parsed as rich markup)."""
+        self._lines.append([cell if isinstance(cell, Text) else _cell(cell) for cell in cells])
+
+    def add_label(self, text):
+        """Add a label, i.e., a grey line spanning the table. An empty
+        string adds a blank line."""
+        self._lines.append(Text(f"  {text}" if text else "", style=_GREY))
+
+    def _widths(self):
+        rows = [line for line in self._lines if isinstance(line, list)]
+        return [max(cell.cell_len for cell in [header] + [row[i] for row in rows])
+                for i, header in enumerate(self._headers)]
+
+    def _format_row(self, cells, widths):
+        line = Text("  ")
+        for i, (cell, width) in enumerate(zip(cells, widths)):
+            padding = " " * (width - cell.cell_len)
+            line.append("   " if i > 0 else "")
+            line.append_text(Text(padding) + cell if i in self._right_justified else cell + Text(padding))
+        line.append("  ")
+        return line
+
+    def __rich_console__(self, console, options):
+        widths = self._widths()
+        rule = Text("─" * (sum(widths) + 3 * len(widths) + 1))
+        yield self._format_row(self._headers, widths)
+        yield rule
+        for line in self._lines:
+            yield self._format_row(line, widths) if isinstance(line, list) else line
+        yield rule
+
+    def __rich_measure__(self, console, options):
+        widths = self._widths()
+        width = max([sum(widths) + 3 * len(widths) + 1] +
+                    [line.cell_len for line in self._lines if isinstance(line, Text)])
+        return Measurement(width, width)
+
+
+def _datetime_note():
+    """Return the note, shown below tables, explaining that dates and
+    times are given in the local timezone of the machine."""
+    return Text(f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
+
+
+def _print(*renderables):
+    """
+    Print the given rich renderables (e.g., strings, tables) one after
+    the other.
+
+    They are printed in a single call, so that Jupyter shows them in a
+    single output block. Lines are never wrapped or cropped to fit the
+    width of the console: if they are wider, they overflow as with
+    print().
+    """
+    group = Group(*renderables)
+    console = Console(highlight=False)
+    width = Measurement.get(console, console.options.update(max_width=10_000), group).maximum
+    if width > console.width:
+        console = Console(highlight=False, width=width)
+    console.print(group)
 
 
 def _fmt_timestamp(ts):
@@ -810,139 +949,148 @@ def _fmt_timestamp(ts):
     return datetime.fromtimestamp(ts).astimezone().strftime('%a, %b %d, %Y %H:%M:%S %Z')
     
 
-def _strip_ansi(text):
+def _chamber_table(chambers):
     """
-    Remove ANSI escape sequences from text for accurate length
-    calculation. Used in the printing functions below.
-    
-    Parameters
-    ----------
-    text : str
-        Input text.
-    
-    Returns
-    -------
-    str
-        Output text with all ANSI escape sequences removed.
-    
-    Examples
-    --------
-    >>> colored_text = "\\x1b[32mGreen text\\x1b[0m"
-    >>> plain_text = _strip_ansi(colored_text)
-    >>> print(plain_text)
-    Green text
-    """
-    ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
-    return ansi_escape.sub('', str(text))
+    Return a renderable with a table of chamber information.
 
-def _print_chamber_table(chambers, indentation=0, col_separator=' ', line_separator = '─', line_char = '─'):
-    """
-    Print a formatted table of chamber information.
-    
     Parameters
     ----------
     chambers : list of dict
         List of dictionaries containing chamber information. Each dictionary
         should have keys: 'status', 'chamber_id', 'chamber_model', 'mode',
         and 'valid_configs'.
-    indentation : int, optional
-        Number of spaces to indent the table. Default is 0.
-    col_separator : str, optional
-        Character(s) to use as column separator. Default is ' '.
-    line_separator : str, optional
-        Character to use at line boundaries, including between columns. Default is '─'.
-    line_char : str, optional
-        Character to use for horizontal lines. Default is '─'.
-    
+
     Returns
     -------
-    None
-        Prints the table to stdout.
+    rich renderable
     """
-    # Default values for missing fields
-    DEFAULT_ENTRY = "NA"
-    
-    # Calculate column widths for better formatting
-    headers = ["Status", "Chamber ID", "Model", "Mode", "Hardware Configurations"]
-    col_widths = [len(h) for h in headers]
-    
-    # Process data and calculate maximum widths
-    rows = []
+    table = _Table(["Status", "Chamber ID", "Model", "Mode", "Hardware Configurations"])
     for chamber in chambers:
-        status = _fmt_status(chamber.get('status'))
-        chamber_id = chamber.get('chamber_id', '')
-        model = chamber.get('chamber_model', DEFAULT_ENTRY)
-        mode = chamber.get('mode', None)
-        if mode is None:
-            mode = DEFAULT_ENTRY
-        
-        # Handle valid_configs - it's a list of strings
-        valid_configs = chamber.get('valid_configs', DEFAULT_ENTRY)
+        valid_configs = chamber.get('valid_configs', None)
         if isinstance(valid_configs, list):
-            valid_configs_str = ', '.join(f"'{config}'" for config in valid_configs)
-        else:
-            valid_configs_str = str(valid_configs)
-        
-        row = [status, chamber_id, model, mode, valid_configs_str]
-        rows.append(row)
-        
-        # Update column widths (using stripped text for length calculation)
-        for i, value in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(_strip_ansi(value)))
-    
-    # Print header
-    sep_with_space = f' {col_separator} '
-    header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
-    
-    separator = line_separator + line_separator.join(line_char * (w + 2) for w in col_widths) + line_separator
-
-    print()
-    print(' ' * indentation + header_row)
-    print(' ' * indentation + separator)
-    
-    # Print data rows
-    for row in rows:
-        # Calculate padding for each cell based on visible length
-        padded_row = []
-        for value, width in zip(row, col_widths):
-            visible_len = len(_strip_ansi(value))
-            padding_needed = width - visible_len
-            padded_value = str(value) + ' ' * padding_needed
-            padded_row.append(padded_value)
-        
-        row_str = col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator
-        print(' ' * indentation + row_str)
-    
-    print(' ' * indentation + separator)
+            valid_configs = ', '.join(f"'{config}'" for config in valid_configs)
+        table.add_row(_fmt_status(chamber.get('status')),
+                      _cell(chamber.get('chamber_id')),
+                      _cell(chamber.get('chamber_model')),
+                      _cell(chamber.get('mode')),
+                      _cell(valid_configs))
+    return table
 
 
-def _print_experiment_table(experiments, print_max=None, indentation=0, col_separator=' ', line_separator = '─', line_char = '─'):
+def _print_chamber_table(chambers):
     """
-    Print a formatted table of experiment information.
-    
+    Print a formatted table of chamber information.
+
+    Parameters
+    ----------
+    chambers : list of dict
+        List of dictionaries containing chamber information (see _chamber_table).
+
+    Examples
+    --------
+    >>> chambers = [
+    ...     {'status': 'READY', 'chamber_id': 'lt-demo-x81a', 'chamber_model': 'Light Tunnel Mk2',
+    ...      'mode': 'queue', 'valid_configs': ['standard', 'camera']},
+    ...     {'status': 'OFFLINE', 'chamber_id': 'wt-demo-c2q4', 'chamber_model': 'Wind Tunnel Mk2',
+    ...      'mode': None, 'valid_configs': ['standard']}
+    ... ]
+    >>> _print_chamber_table(chambers) # doctest: +NORMALIZE_WHITESPACE
+    <BLANKLINE>
+      Status    Chamber ID     Model              Mode    Hardware Configurations
+    ───────────────────────────────────────────────────────────────────────────────
+      READY     lt-demo-x81a   Light Tunnel Mk2   queue   'standard', 'camera'
+      OFFLINE   wt-demo-c2q4   Wind Tunnel Mk2    NA      'standard'
+    ───────────────────────────────────────────────────────────────────────────────
+    """
+    _print("", _chamber_table(chambers))
+
+
+def _check_print_max(print_max):
+    """
+    Check that print_max is None or an integer larger than zero.
+
+    Raises
+    ------
+    TypeError
+        If print_max is not an integer or None.
+    ValueError
+        If print_max is less than or equal to zero.
+    """
+    if print_max is not None and (isinstance(print_max, bool) or not isinstance(print_max, numbers.Integral)):
+        raise TypeError(f"print_max must be an integer or None, not {type(print_max).__name__}")
+    if print_max is not None and print_max <= 0:
+        raise ValueError("print_max must be None or an integer larger than zero")
+
+
+def _experiment_table(experiments, print_max=None, empty_message=None):
+    """
+    Return a renderable with a table of experiment information,
+    followed by a note on the timezone of the dates.
+
     Parameters
     ----------
     experiments : list of dict
         List of dictionaries containing experiment information. Each dictionary
         should have keys: 'status', 'tag', 'experiment_id', 'chamber_id',
-        'config', and 'submitted_on'.
+        'config', and 'submitted_on', and optionally
+        'total_instructions' and 'current_instruction' to show the
+        progress.
     print_max : int or None, optional
         Maximum number of experiments to print. If None, all experiments
         are printed. Default is None.
-    indentation : int, optional
-        Number of spaces to indent the table. Default is 0.
-    col_separator : str, optional
-        Character(s) to use as column separator. Default is ' '.
-    line_separator : str, optional
-        Character to use at line boundaries, including between columns. Default is '─'.
-    line_char : str, optional
-        Character to use for horizontal lines. Default is '─'.
-    
+    empty_message : str or None, optional
+        If there are no experiments, the message is shown in the
+        table (in grey), e.g., '--- No active experiments ---'. If
+        None (default), the table is left empty.
+
     Returns
     -------
-    None
-        Prints the table to stdout.
-    
+    rich renderable
+
+    Raises
+    ------
+    TypeError
+        If print_max is not an integer or None.
+    ValueError
+        If print_max is less than or equal to zero.
+    """
+    _check_print_max(print_max)
+    n = len(experiments) if print_max is None else min(print_max, len(experiments))
+    table = _Table(["Status", "Progress", "Tag", "Experiment ID", "Chamber ID", "Config", "Submitted On"])
+    for experiment in experiments[0:n]:
+        submitted_on = experiment.get('submitted_on', None)
+        table.add_row(_fmt_status(experiment.get('status')),
+                      _fmt_progress(experiment),
+                      _cell(experiment.get('tag')),
+                      _cell(experiment.get('experiment_id')),
+                      _cell(experiment.get('chamber_id')),
+                      _cell(experiment.get('config')),
+                      _NA if submitted_on is None else _fmt_timestamp(submitted_on))
+    if len(experiments) == 0 and empty_message is not None:
+        table.add_label(f"--- {empty_message} ---")
+    elif n < len(experiments):
+        table.add_label("")
+        table.add_label(f"--- showing {n} / {len(experiments)} experiments ---")
+    return Group(table, _datetime_note())
+
+
+def _print_experiment_table(experiments, print_max=None, empty_message=None):
+    """
+    Print a formatted table of experiment information.
+
+    Parameters
+    ----------
+    experiments : list of dict
+        List of dictionaries containing experiment information (see
+        _experiment_table).
+    print_max : int or None, optional
+        Maximum number of experiments to print. If None, all experiments
+        are printed. Default is None.
+    empty_message : str or None, optional
+        If there are no experiments, the message is shown in the
+        table (in grey), e.g., '--- No active experiments ---'. If
+        None (default), the table is left empty.
+
     Raises
     ------
     TypeError
@@ -956,54 +1104,45 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
     ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01',
     ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
     ... ]
-    >>> _print_experiment_table(experiments, print_max=10)
+    >>> _print_experiment_table(experiments, print_max=10) # doctest: +NORMALIZE_WHITESPACE
     <BLANKLINE>
-      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
+      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On
     ──────────────────────────────────────────────────────────────────────────────────────────────────────
-      DONE     NA         test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
-    >>> experiments = [
-    ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01', 'total_instructions': 100, 'current_instruction': 10,
-    ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
-    ... ]
-    >>> _print_experiment_table(experiments, print_max=10)
-    <BLANKLINE>
-      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-      DONE     10 %       test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
+      DONE     NA         test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
     ──────────────────────────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
 
-    >>> experiments = [
-    ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01', 'total_instructions': 6002, 'current_instruction': 5348,
+    The progress is shown if the experiment has the necessary fields,
+    and a label is shown if not all experiments are printed.
+
+    >>> experiments.append(
+    ...     {'status': 'RUNNING', 'tag': 'test2', 'experiment_id': 'exp_02', 'total_instructions': 6002, 'current_instruction': 5429,
     ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
-    ... ]
-    >>> _print_experiment_table(experiments, print_max=10)
+    ... )
+    >>> _print_experiment_table(experiments[::-1], print_max=1) # doctest: +NORMALIZE_WHITESPACE
     <BLANKLINE>
-      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-      DONE     89.1 %     test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+      Status    Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On
+    ───────────────────────────────────────────────────────────────────────────────────────────────────────
+      RUNNING   90.45 %    test2   exp_02          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
+    <BLANKLINE>
+      --- showing 1 / 2 experiments ---
+    ───────────────────────────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
 
-    >>> experiments = [
-    ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01', 'total_instructions': 6002, 'current_instruction': 5429,
-    ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
-    ... ]
-    >>> _print_experiment_table(experiments, print_max=10)
+    If there are no experiments, the table is empty, or shows the
+    given empty_message.
+
+    >>> _print_experiment_table([], empty_message="No active experiments") # doctest: +NORMALIZE_WHITESPACE
     <BLANKLINE>
-      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On                    
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-      DONE     90.45 %    test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET  
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
+      Status   Progress   Tag   Experiment ID   Chamber ID   Config   Submitted On
+    ────────────────────────────────────────────────────────────────────────────────
+      --- No active experiments ---
+    ────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
-    
+
     >>> _print_experiment_table(experiments, print_max=10.5)
     Traceback (most recent call last):
         ...
@@ -1021,83 +1160,15 @@ def _print_experiment_table(experiments, print_max=None, indentation=0, col_sepa
         ...
     ValueError: print_max must be None or an integer larger than zero
     """
-    # Check inputs
-    if print_max is not None and not isinstance(print_max, numbers.Integral):
-        raise TypeError(f"print_max must be an integer or None, not {type(print_max).__name__}")
-    if print_max is not None and print_max <= 0:
-        raise ValueError("print_max must be None or an integer larger than zero")
-
-    # Print n experiments
-    n = len(experiments) if print_max is None else min(print_max, len(experiments))
-    to_print = experiments[0:n]
-    
-    # Default values for missing fields
-    DEFAULT_VALUE = "NA"
-    
-    # Calculate column widths for better formatting
-    headers = ["Status", "Progress", "Tag", "Experiment ID", "Chamber ID", "Config", "Submitted On"]
-    col_widths = [len(h) for h in headers]
-    
-    # Process data and calculate maximum widths
-    rows = []
-    for experiment in to_print:
-        status = _fmt_status(experiment.get('status'))
-        tag = experiment.get('tag', DEFAULT_VALUE)
-        experiment_id = experiment.get('experiment_id', DEFAULT_VALUE)
-        chamber_id = experiment.get('chamber_id', DEFAULT_VALUE)
-        config = experiment.get('config', DEFAULT_VALUE)
-        total_instructions = experiment.get('total_instructions', None)
-        current_instruction = experiment.get('current_instruction', None)
-        try:
-            progress = f'{(float(current_instruction) / total_instructions * 100):.4g} %'
-        except Exception:
-            progress = DEFAULT_VALUE
-        if 'submitted_on' in experiment:
-            submitted_on = _fmt_timestamp(experiment.get('submitted_on'))
-        else:
-            submitted_on = DEFAULT_VALUE
-        
-        row = [status, progress, tag, experiment_id, chamber_id, config, submitted_on]
-        rows.append(row)
-        
-        # Update column widths (using stripped text for length calculation)
-        for i, value in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(_strip_ansi(value)))
-    
-    # Print header
-    sep_with_space = f' {col_separator} '
-    header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
-
-    separator = line_separator + line_separator.join(line_char * (w + 2) for w in col_widths) + line_separator
-    
-    print()
-    print(' ' * indentation + header_row)
-    print(' ' * indentation + separator)
-    
-    # Print data rows
-    for row in rows:
-        # Calculate padding for each cell based on visible length
-        padded_row = []
-        for value, width in zip(row, col_widths):
-            visible_len = len(_strip_ansi(value))
-            padding_needed = width - visible_len
-            padded_value = str(value) + ' ' * padding_needed
-            padded_row.append(padded_value)
-        
-        row_str = col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator
-        print(' ' * indentation + row_str)
-
-    if len(to_print) < len(experiments):
-        print()
-        print(' ' * indentation, colored(f' --- showing {len(to_print)} / {len(experiments)} experiments ---', (100,100,100)))
-    print(' ' * indentation + separator)
-    print(' ' * indentation + f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
-    print()
+    _print("", _experiment_table(experiments, print_max, empty_message), "")
 
 
-def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, col_separator=' ', line_separator = '─', line_char = '─'):
+def _queue_table(experiments, chamber_id, print_max=None):
     """
-    Print a formatted table with the queue of a chamber.
+    Return a renderable with the queue of a chamber: a title, a table
+    with the experiment currently being executed (if any) followed by
+    the queued experiments, and notes on how many experiments are
+    shown and the timezone of the dates.
 
     Parameters
     ----------
@@ -1109,25 +1180,79 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
         also have the keys 'current_instruction' and
         'total_instructions' to display their progress.
     chamber_id : str
-        The unique identifier of the chamber, shown in the table title.
+        The unique identifier of the chamber, shown in the title.
     print_max : int or None, optional
         Maximum number of queued experiments to print; the experiment
         currently being executed is always printed. If None, all
         experiments are printed. Default is None.
-    indentation : int, optional
-        Number of spaces to indent the table. Default is 0.
-    col_separator : str, optional
-        Character(s) to use as column separator. Default is ' '.
-    line_separator : str, optional
-        Character to use at line boundaries, including between columns. Default is '─'.
-    line_char : str, optional
-        Character to use for horizontal lines. Default is '─'.
-    
+
     Returns
     -------
-    None
-        Prints the table to stdout.
-    
+    rich renderable
+
+    Raises
+    ------
+    TypeError
+        If print_max is not an integer or None.
+    ValueError
+        If print_max is less than or equal to zero.
+    """
+    _check_print_max(print_max)
+    title = Text(f"Active and queued experiments for chamber '{chamber_id}'. Position 1 is the next to run.")
+    # Separate the active experiment (position=0) from the queue (position>0)
+    active = next((e for e in experiments if e.get('position') == 0), None)
+    queued = [e for e in experiments if e.get('position') != 0]
+    n = len(queued) if print_max is None else min(print_max, len(queued))
+
+    def add_row(experiment):
+        status = experiment.get('status')
+        if status == 'SUBMITTING':
+            position = '>>'
+        elif status in ('RUNNING', 'STOPPING'):
+            position = _fmt_progress(experiment)
+        else:
+            position = experiment.get('position')
+        submitted_on = experiment.get('submitted_on', None)
+        table.add_row(position,
+                      _fmt_status(status),
+                      experiment.get('tag'),
+                      experiment.get('experiment_id'),
+                      experiment.get('user_id'),
+                      _NA if submitted_on is None else _fmt_timestamp(submitted_on))
+
+    table = _Table(["", "Status", "Tag", "Experiment ID", "Submitted By", "Submitted On"], right_justified=[0])
+    if active is not None:
+        table.add_label("--- Active experiment ---")
+        add_row(active)
+        table.add_label("")
+    if n > 0:
+        table.add_label("--- Queued experiments ---")
+    for experiment in queued[0:n]:
+        add_row(experiment)
+    if n < len(queued):
+        table.add_label("")
+        table.add_label(f"--- showing {n} / {len(queued)} queued experiments ---")
+    if n == 0:
+        table.add_label("--- There are no experiments in the queue ---")
+    return Group(title, "", table, _datetime_note())
+
+
+def _print_queue_table(experiments, chamber_id, print_max=None):
+    """
+    Print a formatted table with the queue of a chamber.
+
+    Parameters
+    ----------
+    experiments : list of dict
+        List of dictionaries containing experiment information (see
+        _queue_table).
+    chamber_id : str
+        The unique identifier of the chamber, shown in the title.
+    print_max : int or None, optional
+        Maximum number of queued experiments to print; the experiment
+        currently being executed is always printed. If None, all
+        experiments are printed. Default is None.
+
     Raises
     ------
     TypeError
@@ -1137,11 +1262,11 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     
     Examples
     --------
-    >>> _print_queue_table([], 'ch-abcd-xyzw', print_max=10)
+    >>> _print_queue_table([], 'ch-abcd-xyzw', print_max=10) # doctest: +NORMALIZE_WHITESPACE
     <BLANKLINE>
     Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
-         Status   Tag   Experiment ID   Submitted By   Submitted On  
+         Status   Tag   Experiment ID   Submitted By   Submitted On
     ─────────────────────────────────────────────────────────────────
       --- There are no experiments in the queue ---
     ─────────────────────────────────────────────────────────────────
@@ -1152,18 +1277,18 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
     ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890, 'user_id': 'test@test', 'position': 1}
     ... ]
-    >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10)
+    >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10) # doctest: +NORMALIZE_WHITESPACE
     <BLANKLINE>
     Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
-          Status   Tag     Experiment ID   Submitted By   Submitted On                    
+          Status   Tag     Experiment ID   Submitted By   Submitted On
     ──────────────────────────────────────────────────────────────────────────────────────
       --- Queued experiments ---
-      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET
     ──────────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
-    
+
     >>> experiments_with_active = [
     ...     {'status': 'RUNNING', 'tag': 'active1', 'experiment_id': 'exp_00',
     ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
@@ -1172,17 +1297,17 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
     ...      'user_id': 'test@test', 'position': 1}
     ... ]
-    >>> _print_queue_table(experiments_with_active, 'ch-abcd-xyzw', print_max=10)
+    >>> _print_queue_table(experiments_with_active, 'ch-abcd-xyzw', print_max=10) # doctest: +NORMALIZE_WHITESPACE
     <BLANKLINE>
     Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
-             Status    Tag       Experiment ID   Submitted By   Submitted On                    
+             Status    Tag       Experiment ID   Submitted By   Submitted On
     ────────────────────────────────────────────────────────────────────────────────────────────
       --- Active experiment ---
-      25 %   RUNNING   active1   exp_00          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+      25 %   RUNNING   active1   exp_00          test@test      Sat, Feb 14, 2009 00:31:30 CET
     <BLANKLINE>
       --- Queued experiments ---
-         1   QUEUED    test1     exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+         1   QUEUED    test1     exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET
     ────────────────────────────────────────────────────────────────────────────────────────────
      Date/time in your machine's local timezone — current time = ...
     <BLANKLINE>
@@ -1198,15 +1323,15 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
     ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
     ...      'user_id': 'test@test', 'position': 3}
     ... ]
-    >>> _print_queue_table(many_experiments, 'ch-abcd-xyzw', print_max=2)
+    >>> _print_queue_table(many_experiments, 'ch-abcd-xyzw', print_max=2) # doctest: +NORMALIZE_WHITESPACE
     <BLANKLINE>
     Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
     <BLANKLINE>
-          Status   Tag     Experiment ID   Submitted By   Submitted On                    
+          Status   Tag     Experiment ID   Submitted By   Submitted On
     ──────────────────────────────────────────────────────────────────────────────────────
       --- Queued experiments ---
-      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET  
-      2   QUEUED   test2   exp_02          test@test      Sat, Feb 14, 2009 00:31:30 CET  
+      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET
+      2   QUEUED   test2   exp_02          test@test      Sat, Feb 14, 2009 00:31:30 CET
     <BLANKLINE>
       --- showing 2 / 3 queued experiments ---
     ──────────────────────────────────────────────────────────────────────────────────────
@@ -1230,106 +1355,7 @@ def _print_queue_table(experiments, chamber_id, print_max=None, indentation=0, c
         ...
     ValueError: print_max must be None or an integer larger than zero
     """
-    # Check inputs
-    if print_max is not None and not isinstance(print_max, numbers.Integral):
-        raise TypeError(f"print_max must be an integer or None, not {type(print_max).__name__}")
-    if print_max is not None and print_max <= 0:
-        raise ValueError("print_max must be None or an integer larger than zero")
-
-    # Separate the active experiment (position=0) from the queue (position>0)
-    active = next((e for e in experiments if e.get('position') == 0), None)
-    queued = [e for e in experiments if e.get('position') != 0]
-
-    # Print n queued experiments
-    n = len(queued) if print_max is None else min(print_max, len(queued))
-    to_print = queued[0:n]
-
-    # Default values for missing fields
-    DEFAULT_VALUE = "NA"
-
-    def _position_label(experiment):
-        status = experiment.get('status', '')
-        if status == 'SUBMITTING':
-            return '>>'
-        elif status in ('RUNNING', 'STOPPING'):
-            total = experiment.get('total_instructions', None)
-            current = experiment.get('current_instruction', None)
-            try:
-                return f'{float(current) / total * 100:.4g} %'
-            except Exception:
-                return DEFAULT_VALUE
-        else:
-            return str(experiment.get('position', DEFAULT_VALUE))
-
-    def _make_row(experiment):
-        position_label = _position_label(experiment)
-        status = _fmt_status(experiment.get('status'))
-        tag = experiment.get('tag', DEFAULT_VALUE)
-        experiment_id = experiment.get('experiment_id', DEFAULT_VALUE)
-        submitted_on = _fmt_timestamp(experiment['submitted_on']) if 'submitted_on' in experiment else DEFAULT_VALUE
-        submitted_by = experiment.get('user_id', DEFAULT_VALUE)
-        return [position_label, status, tag, experiment_id, submitted_by, submitted_on]
-
-    # Calculate column widths for better formatting
-    headers = ["", "Status", "Tag", "Experiment ID", "Submitted By", "Submitted On"]
-    col_widths = [len(h) for h in headers]
-
-    # Process data and calculate maximum widths across all experiments
-    rows = []
-    for experiment in to_print:
-        row = _make_row(experiment)
-        rows.append(row)
-        for i, value in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(_strip_ansi(str(value))))
-
-    active_row = None
-    if active is not None:
-        active_row = _make_row(active)
-        for i, value in enumerate(active_row):
-            col_widths[i] = max(col_widths[i], len(_strip_ansi(str(value))))
-
-    # Print header
-    sep_with_space = f' {col_separator} '
-    header_row = col_separator + ' ' + sep_with_space.join(h.ljust(w) for h, w in zip(headers, col_widths)) + ' ' + col_separator
-
-    separator = line_separator + line_separator.join(line_char * (w + 2) for w in col_widths) + line_separator
-
-    def _print_row(row, right_align_first=False):
-        padded_row = []
-        for i, (value, width) in enumerate(zip(row, col_widths)):
-            visible_len = len(_strip_ansi(str(value)))
-            padding_needed = width - visible_len
-            if i == 0 and right_align_first:
-                padded_value = ' ' * padding_needed + str(value)
-            else:
-                padded_value = str(value) + ' ' * padding_needed
-            padded_row.append(padded_value)
-        print(' ' * indentation + col_separator + ' ' + sep_with_space.join(padded_row) + ' ' + col_separator)
-
-    print()
-    print(f"Active and queued experiments for chamber '{chamber_id}'. Position 1 is the next to run.")
-    print()
-    print(' ' * indentation + header_row)
-    print(' ' * indentation + separator)
-
-    if active_row is not None:
-        print(' ' * indentation, colored(' --- Active experiment ---', (100,100,100)))
-        _print_row(active_row, right_align_first=True)
-        print()
-
-    if len(to_print) > 0:
-        print(' ' * indentation, colored(' --- Queued experiments ---', (100,100,100)))
-    for row in rows:
-        _print_row(row, right_align_first=True)
-    if len(to_print) < len(queued):
-        print()
-        print(' ' * indentation, colored(f' --- showing {len(to_print)} / {len(queued)} queued experiments ---', (100,100,100)))
-    if len(to_print) == 0:
-        print(' ' * indentation, colored(' --- There are no experiments in the queue ---', (100,100,100)))
-
-    print(' ' * indentation + separator)
-    print(' ' * indentation + f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
-    print()
+    _print("", _queue_table(experiments, chamber_id, print_max), "")
 
 
 # ----------------------------------------------------------------------
