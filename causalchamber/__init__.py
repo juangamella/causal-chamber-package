@@ -55,9 +55,12 @@ def _print_welcome_message():
     sections.add_column(justify="left")
     sections.add_row(
         "Login",
-        "To log into the Remote Lab, call\n\n"
-        "  >>> import causalchamber.lab as lab\n"
-        "  >>> lab.login()",
+        # The prompts are in a mid-luminance pink with similar
+        # contrast (~4:1) on light and dark backgrounds, given as hex so
+        # terminals don't remap it. The code keeps the default color.
+        "To log in to the Remote Lab, call\n\n"
+        "  [#e03892]>>>[/] import causalchamber.lab as lab\n"
+        "  [#e03892]>>>[/] lab.login()",
     )
     sections.add_row(
         "Documentation", f"Guides and examples at [link=https://{docs}]{docs}[/link]"
@@ -69,7 +72,7 @@ def _print_welcome_message():
         "Citation",
         "If you use our datasets, simulators or Remote Lab for your work,\n"
         "please consider citing:\n\n"
-        + escape(_CITATION),
+        + f"[dim]{escape(_CITATION)}[/dim]",
     )
     # Print everything in a single call: in Jupyter, each call is
     # rendered as a separate output block, with large gaps between them
@@ -81,7 +84,7 @@ def _print_welcome_message():
             "",
             Padding(sections, (0, 0, 0, 2), expand=False),
             "",
-            "  [dim]Set the env. variable CAUSALCHAMBER_QUIET=1 to hide this message.[/dim]",
+            "  [dim italic]Set the env. variable CAUSALCHAMBER_QUIET=1 to hide this message.[/dim italic]",
             "",
         )
     )
