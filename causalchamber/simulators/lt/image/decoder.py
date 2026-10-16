@@ -265,7 +265,7 @@ class DecoderNetwork(nn.Module):
 
     def save(self, directory=None, path=None, tag=None):
         if directory is not None:
-            timestamp = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+            timestamp = datetime.datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
             path = (
                 directory
                 + f"model_{timestamp}"
