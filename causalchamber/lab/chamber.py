@@ -38,6 +38,7 @@ import itertools
 import time
 import sys
 import numbers
+import math
 
 # Third-party packages
 import pandas as pd
@@ -740,8 +741,9 @@ def _generate_set(target, value):
     TypeError
         If target is not a string.
     ValueError
-        If the given value could not be converted to float.
-    
+        If the given value could not be converted to float, or is
+        not finite (i.e., NaN or infinity).
+
     Examples
     --------
     >>> _generate_set('red', 240)
@@ -768,12 +770,24 @@ def _generate_set(target, value):
     Traceback (most recent call last):
         ...
     ValueError: could not convert string to float: '1aw'
+
+    >>> _generate_set('red', float('nan'))
+    Traceback (most recent call last):
+        ...
+    ValueError: value must be finite, not nan
+
+    >>> _generate_set('red', float('-inf'))
+    Traceback (most recent call last):
+        ...
+    ValueError: value must be finite, not -inf
     """
     # Check inputs
     if not isinstance(target, str):
         raise TypeError(f"target must be a string, not {type(target).__name__}")
-    # Generate and return
     value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"value must be finite, not {value}")
+    # Generate and return
     return f'SET,{target},{value}'
 
 def _generate_msr(n, delay):
@@ -830,17 +844,27 @@ def _generate_msr(n, delay):
     Traceback (most recent call last):
         ...
     ValueError: delay must be a non-negative integer
+
+    >>> _generate_msr(True, 0)
+    Traceback (most recent call last):
+        ...
+    TypeError: n must be an integer larger than zero, not bool
+
+    >>> _generate_msr(1, False)
+    Traceback (most recent call last):
+        ...
+    TypeError: delay must be a non-negative integer, not bool
     """
-    # Check inputs: n
+    # Check inputs: n (bool is a subclass of int, so exclude it explicitly)
     error_msg = "n must be an integer larger than zero"
-    if not isinstance(n, numbers.Integral):
+    if isinstance(n, bool) or not isinstance(n, numbers.Integral):
         raise TypeError(f"{error_msg}, not {type(n).__name__}")
     if n <= 0:
         raise ValueError(error_msg)
 
     # Check inputs: delay
     error_msg = "delay must be a non-negative integer"
-    if not isinstance(delay, numbers.Integral):
+    if isinstance(delay, bool) or not isinstance(delay, numbers.Integral):
         raise TypeError(f"{error_msg}, not {type(delay).__name__}")
     if delay < 0:
         raise ValueError(error_msg)
@@ -891,10 +915,15 @@ def _generate_wait(milliseconds):
     Traceback (most recent call last):
         ...
     ValueError: milliseconds must be an integer larger than zero
+
+    >>> _generate_wait(True)
+    Traceback (most recent call last):
+        ...
+    TypeError: milliseconds must be an integer larger than zero, not bool
     """
-    # Check input
+    # Check input (bool is a subclass of int, so exclude it explicitly)
     error_msg = "milliseconds must be an integer larger than zero"
-    if not isinstance(milliseconds, numbers.Integral):
+    if isinstance(milliseconds, bool) or not isinstance(milliseconds, numbers.Integral):
         raise TypeError(f"{error_msg}, not {type(milliseconds).__name__}")
     if milliseconds <= 0:
         raise ValueError(error_msg)
