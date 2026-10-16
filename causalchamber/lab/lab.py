@@ -310,6 +310,58 @@ class Lab():
         """
         print_dashboard(self.get_account())
 
+    def stop_session(self, session_id, verbose=True):
+        """
+        Stop one of your active real-time sessions. Its instructions
+        are refused from then on, and the credits for its unused time
+        (1 credit per whole second) are refunded.
+
+        Your active sessions are listed in the dashboard (see
+        Lab.dashboard).
+
+        Parameters
+        ----------
+        session_id : str
+            The unique identifier of the session.
+        verbose : bool, optional
+            If True (default), this will print a confirmation with the
+            refunded credits. If False, nothing is printed.
+
+        Returns
+        -------
+        dict
+            Dictionary with the session_id, the refund (in credits)
+            and the unused_duration (in seconds) of the session.
+
+        Raises
+        ------
+        TypeError
+            If session_id is not a string.
+        UserError
+            If the credentials are incorrect, the session does not
+            exist or does not belong to you (code 404), or it is no
+            longer active, i.e., it was already stopped, its time is
+            up, or it was replaced by a newer session (code 409).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        if not isinstance(session_id, str):
+            raise TypeError(f"session_id must be a string, not {type(session_id).__name__}")
+        try:
+            response = self._API.make_request('POST', f'sessions/{session_id}/stop', {})
+        except LabError as e:
+            # The API returns 404 for sessions that do not exist or
+            # belong to another user, i.e., an error on the user's side
+            if e.code == 404:
+                raise UserError(404, f"Session '{session_id}' does not exist or does not belong to you.",
+                                request_id=e.request_id, scheduler_id=e.scheduler_id)
+            raise
+        result = response.json()
+        if verbose:
+            print(f"Stopped session {session_id}; {result.get('refund', 0):,} credits were refunded for its unused time.")
+        return result
+
     def get_queue(self, chamber_id, verbose=True, print_max=10):
         """Retrieve the experiments that are waiting in the queue of the
         given chamber, including the experiment it is currently
