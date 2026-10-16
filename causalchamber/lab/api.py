@@ -208,7 +208,9 @@ class API():
             If the API returns a 400, 401, 403 or 409 HTTP error, indicating a
             client-side error.
         LabError
-            If it is impossible to connect to the API, or the API
+            If it is impossible to connect to the API, the request
+            fails for any other reason (e.g., a timeout or an
+            interrupted response), or the API
             returns any other HTTP code, including error codes (e.g.,
             404, 405 and 5XX) which indicate a server error or point
             to a potential error in this client.
@@ -258,6 +260,8 @@ class API():
             )
         except requests.exceptions.ConnectionError as e:
             raise LabError(1, f'Could not connect to the API at {self.endpoint}. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: {e}')
+        except requests.exceptions.RequestException as e:
+            raise LabError(1, f'The request to the API at {self.endpoint} failed. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: {e}')
 
         # Store request roundtime in stats dictionary
         key = f'{method} {url}'
