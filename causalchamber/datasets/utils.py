@@ -101,6 +101,9 @@ def _download(url, output_path, verbose):
     """Function to actually download the file from the given URL into the given output_path."""
     print(f'Downloading dataset from "{url}" into "{output_path}"\n') if verbose else None
     response = requests.get(url, stream=True)
+    # Raise an exception for HTTP error codes (e.g., an expired link)
+    # instead of writing the error page to the output file
+    response.raise_for_status()
     total_size_in_bytes = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 Kibibyte
     if verbose:

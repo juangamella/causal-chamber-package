@@ -166,6 +166,9 @@ def _download(url, output_path):
     """Function to download the file from the given URL into the given output_path."""
     print(f'Downloading model from "{url}" into "{output_path}"\n')
     response = requests.get(url, stream=True)
+    # Raise an exception for HTTP error codes (e.g., an expired link)
+    # instead of writing the error page to the output file
+    response.raise_for_status()
     total_size_in_bytes = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 Kibibyte
     progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
