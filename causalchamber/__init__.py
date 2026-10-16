@@ -7,11 +7,21 @@ __all__ = ["datasets", "utils", "ground_truth", "simulators"]
 # Welcome message, displayed on import in interactive sessions
 # (Jupyter, IPython or a terminal) unless CAUSALCHAMBER_QUIET is set
 
-# Python prompt (rich markup) shown before code in printed messages, in
-# a mid-luminance pink with similar contrast (~4:1) on light and dark
-# backgrounds, given as hex so terminals don't remap it. The code
-# itself keeps the default color.
-_PROMPT = "[#e03892]>>>[/]"
+# Styles (rich) of the Python prompt and code shown in printed messages
+# (the banner, the Remote Lab dashboard, ...), as in the dashboard
+# design (Claude Design hand-off), made for a dark background
+_PROMPT_STYLE = "#e276b3"
+_CODE_STYLE = "#79bfe0"
+
+# The Python prompt, as rich markup
+_PROMPT = f"[{_PROMPT_STYLE}]>>>[/]"
+
+
+def _code(code):
+    """Return the given code as rich markup, styled as code."""
+    from rich.markup import escape
+
+    return f"[{_CODE_STYLE}]{escape(code)}[/]"
 
 _CITATION = r"""@article{gamella2025chamber,
   author={Gamella, Juan L. and Peters, Jonas and B{\"u}hlmann, Peter},
@@ -62,8 +72,8 @@ def _print_welcome_message():
     sections.add_row(
         "Login",
         "To log in to the Remote Lab, call\n\n"
-        f"  {_PROMPT} from causalchamber import lab\n"
-        f"  {_PROMPT} rlab = lab.login()",
+        f"  {_PROMPT} {_code('from causalchamber import lab')}\n"
+        f"  {_PROMPT} {_code('rlab = lab.login()')}",
     )
     sections.add_row(
         "Documentation", f"Guides and examples at [link=https://{docs}]{docs}[/link]"

@@ -37,6 +37,7 @@ doctests:
 	PYTHONPATH=./ python causalchamber/lab/exceptions.py
 	PYTHONPATH=./ python causalchamber/lab/chamber.py
 	PYTHONPATH=./ python causalchamber/lab/lab.py
+	PYTHONPATH=./ python causalchamber/lab/dashboard.py
 
 # Run the unit tests
 unit-tests:

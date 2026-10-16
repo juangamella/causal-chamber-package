@@ -45,7 +45,8 @@ from causalchamber.lab.utils import download_and_extract
 from causalchamber.lab.chamber import Batch
 from causalchamber.lab.api import API
 from causalchamber.lab.exceptions import LabError, UserError
-from causalchamber import _is_interactive, _PROMPT
+from causalchamber import _is_interactive, _PROMPT, _CODE_STYLE
+from causalchamber.lab.dashboard import print_dashboard
 
 # --------------------------------------------------------------------
 # Login
@@ -64,7 +65,7 @@ Please provide your credentials in one of the following ways.
 
   Pass the path to your credentials file
 
-    {_PROMPT} rlab = lab.login(credentials_file=[dim]"path/to/credentials_file"[/dim])
+    {_PROMPT} [{_CODE_STYLE}]rlab = lab.login(credentials_file=[/][dim]"path/to/credentials_file"[/dim][{_CODE_STYLE}])[/]
 
   where the file contains the lines
 
@@ -262,34 +263,25 @@ class Lab():
                         endpoint=endpoint,
                         credentials=credentials)
 
-        # Get the user's account, and print it in a single call (i.e.,
-        # a single output block in Jupyter)
-        account = self.get_account(verbose=False)
+        # Get the user's account (which also checks the credentials)
+        # and optionally print the dashboard
+        account = self.get_account()
         if verbose:
-            _print("", "", "User info", "", _user_info(account),
-                   "", "", "Active sessions", "", _session_table(account.get('sessions', [])),
-                   "", "", "Active experiments", "",
-                   _active_experiment_table(account.get('experiments', []), print_max=10),
-                   "")
+            print_dashboard(account)
 
-    def get_account(self, verbose=True):
+    def get_account(self):
         """
         Retrieve the details of your account, including your credits,
-        active real-time sessions and active experiments.
-
-        Parameters
-        ----------
-        verbose : bool, optional
-            If True (default), this will print your user ID, email and
-            available credits. If False, nothing is printed.
+        the chambers you can use, and your active real-time sessions
+        and experiments.
 
         Returns
         -------
         dict
             Dictionary with the account details, including the
-            user_id, email, wallet (with your credits), sessions
-            (active real-time sessions) and experiments (active
-            experiments).
+            user_id, name, email, institution, wallet (with your
+            credits), chambers, sessions (active real-time sessions)
+            and experiments (active experiments).
 
         Raises
         ------
@@ -300,10 +292,23 @@ class Lab():
             internal error ocurred on our side.
         """
         response = self._API.make_request('GET', 'account')
-        account = response.json()['account']
-        if verbose:
-            _print("", _user_info(account), "")
-        return account
+        return response.json()['account']
+
+    def dashboard(self):
+        """
+        Print the dashboard: your account and credits, the chambers
+        you can use and when they are available, and your active
+        real-time sessions and experiments.
+
+        Raises
+        ------
+        UserError
+            If the credentials are incorrect.
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        print_dashboard(self.get_account())
 
     def get_queue(self, chamber_id, verbose=True, print_max=10):
         """Retrieve the experiments that are waiting in the queue of the
@@ -869,20 +874,6 @@ def _cell(value):
     return Text(_NA if value is None else str(value))
 
 
-def _hint(text):
-    """
-    Return a hint shown below a section of the dashboard (e.g., how to
-    top up the credits), indented and preceded by the pink prompt of
-    the import banner. The text is plain (not parsed as rich markup).
-
-    Examples
-    --------
-    >>> _hint('Call rlab.topup() to top up your credits.').plain
-    '  >>> Call rlab.topup() to top up your credits.'
-    """
-    return Text.from_markup(f"  {_PROMPT} ") + Text(text)
-
-
 def _truncate(text, max_length=22):
     """
     Return the given text, trimmed at the end with '...' if it is
@@ -1048,142 +1039,6 @@ def _chamber_table(chambers):
     return table
 
 
-def _available_credits(wallet):
-    """
-    Return the credits available in a wallet as a string: its credits
-    minus its credit floor, 'unlimited' if it has no credit floor, or
-    'NA' if the wallet lacks the necessary fields.
-
-    Examples
-    --------
-    >>> _available_credits({'credits': 3600, 'credit_floor': 0})
-    '3600'
-    >>> _available_credits({'credits': 100, 'credit_floor': -500})
-    '600'
-    >>> _available_credits({'credits': 3600, 'credit_floor': None})
-    'unlimited'
-    >>> _available_credits({})
-    'NA'
-    """
-    if wallet.get('credits') is None or 'credit_floor' not in wallet:
-        return _NA
-    elif wallet['credit_floor'] is None:
-        return 'unlimited'
-    else:
-        return str(wallet['credits'] - wallet['credit_floor'])
-
-
-def _user_info(account):
-    """
-    Return a renderable with the user's ID, name, email, institution
-    and available credits, followed by a note on how to top up the
-    credits.
-
-    Parameters
-    ----------
-    account : dict
-        The account, as returned by GET /v0/account, with keys
-        'user_id', 'name', 'email', 'institution' and 'wallet'.
-
-    Returns
-    -------
-    rich renderable
-
-    Examples
-    --------
-    >>> account = {'user_id': 'user123', 'name': 'Ada Lovelace', 'email': 'user123@example.com',
-    ...            'institution': 'ETH Zurich', 'wallet': {'credits': 3600, 'credit_floor': 0}}
-    >>> _print(_user_info(account))
-          user id   user123
-             name   Ada Lovelace
-            email   user123@example.com
-      institution   ETH Zurich
-    <BLANKLINE>
-          credits   3600
-    <BLANKLINE>
-      ... Call rlab.topup() to top up your credits.
-
-    Missing fields are shown as NA.
-
-    >>> _print(_user_info({'user_id': 'user123', 'name': None, 'email': None, 'institution': None,
-    ...                    'wallet': {'credits': 0, 'credit_floor': None}}))
-          user id   user123
-             name   NA
-            email   NA
-      institution   NA
-    <BLANKLINE>
-          credits   unlimited
-    <BLANKLINE>
-      ... Call rlab.topup() to top up your credits.
-    """
-    rows = [("user id", account.get('user_id')),
-            ("name", account.get('name')),
-            ("email", account.get('email')),
-            ("institution", account.get('institution')),
-            ("credits", _available_credits(account.get('wallet') or {}))]
-    width = max(len(label) for label, _ in rows)
-    # Field names are dimmed, right-aligned; values left-aligned
-    lines = [Text("  ") + Text(label.rjust(width), style='dim') + Text("   ") + _cell(value)
-             for label, value in rows]
-    # Blank line separating the credits from the user's details
-    lines.insert(-1, Text(""))
-    return Group(*lines, "", _hint("Call rlab.topup() to top up your credits."))
-
-
-def _session_table(sessions):
-    """
-    Return a renderable with a table of the user's active real-time
-    sessions, followed by a note on the timezone of the dates and (if
-    there are sessions) a note on how to stop them.
-
-    Parameters
-    ----------
-    sessions : list of dict
-        List of dictionaries containing session information, as in
-        the 'sessions' field returned by GET /v0/account. Each
-        dictionary should have keys: 'session_id', 'chamber_id',
-        'chamber_config' and 'expires_on'.
-
-    Returns
-    -------
-    rich renderable
-
-    Examples
-    --------
-    >>> sessions = [{'session_id': 'a778b917-7a05-4b6c-bca7-58805cc1e971', 'chamber_id': 'tt-test-virt',
-    ...              'chamber_config': 'standard', 'expires_on': 1234567890}]
-    >>> _print(_session_table(sessions)) # doctest: +NORMALIZE_WHITESPACE
-          Session ID                             Chamber ID     Config     Expires On
-    ───────────────────────────────────────────────────────────────────────────────────────────────────────
-      ●   a778b917-7a05-4b6c-bca7-58805cc1e971   tt-test-virt   standard   Sat, Feb 14, 2009 00:31:30 CET
-    ───────────────────────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-      ... Stop an active session with rlab.stop_session(<session_id>).
-
-    >>> _print(_session_table([])) # doctest: +NORMALIZE_WHITESPACE
-         Session ID   Chamber ID   Config   Expires On
-    ────────────────────────────────────────────────────
-      --- No active sessions ---
-    ────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    """
-    table = _Table(["", "Session ID", "Chamber ID", "Config", "Expires On"])
-    for session in sessions:
-        expires_on = session.get('expires_on', None)
-        # A blinking green circle marks the session as active
-        table.add_row(Text("●", style=f"blink {_GREEN}"),
-                      session.get('session_id'),
-                      session.get('chamber_id'),
-                      session.get('chamber_config'),
-                      _NA if expires_on is None else _fmt_timestamp(expires_on))
-    if len(sessions) == 0:
-        table.add_label("--- No active sessions ---")
-        return Group(table, _datetime_note())
-    return Group(table, _datetime_note(), "",
-                 _hint("Stop an active session with rlab.stop_session(<session_id>)."))
-
-
 def _print_chamber_table(chambers):
     """
     Print a formatted table of chamber information.
@@ -1266,91 +1121,6 @@ def _experiment_table(experiments, print_max=None):
         table.add_label("")
         table.add_label(f"--- showing {n} / {len(experiments)} experiments ---")
     return Group(table, _datetime_note())
-
-
-def _active_experiment_table(experiments, print_max=None):
-    """
-    Return a renderable with a table of the user's active
-    experiments, as in the 'experiments' field returned by GET
-    /v0/account: the in-flight experiments (i.e., SUBMITTING, RUNNING
-    or STOPPING) on top, followed by the queued ones. It is followed
-    by a note on the timezone of the dates, and a note on how to see
-    all experiments.
-
-    Parameters
-    ----------
-    experiments : list of dict
-        List of dictionaries containing experiment information (see
-        _experiment_table).
-    print_max : int or None, optional
-        Maximum number of queued experiments to print; the in-flight
-        experiments are always printed. If None, all experiments are
-        printed. Default is None.
-
-    Returns
-    -------
-    rich renderable
-
-    Raises
-    ------
-    TypeError
-        If print_max is not an integer or None.
-    ValueError
-        If print_max is less than or equal to zero.
-
-    Examples
-    --------
-    >>> experiment = {'status': 'QUEUED', 'tag': 'test', 'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
-    >>> experiments = [dict(experiment, experiment_id=f'exp_0{i}') for i in range(1, 4)]
-    >>> experiments.append(dict(experiment, experiment_id='exp_04', status='RUNNING',
-    ...                         total_instructions=200, current_instruction=50))
-    >>> _print(_active_experiment_table(experiments, print_max=2)) # doctest: +NORMALIZE_WHITESPACE
-      Status    Progress   Tag    Experiment ID   Chamber ID   Config     Submitted On
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-      --- In-flight experiments ---
-      RUNNING   25 %       test   exp_04          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
-    <BLANKLINE>
-      --- Queued experiments ---
-      QUEUED    NA         test   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
-      QUEUED    NA         test   exp_02          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
-    <BLANKLINE>
-      --- showing 2 / 3 queued experiments ---
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-      ... Call rlab.get_experiments() to see all your experiments.
-
-    >>> _print(_active_experiment_table([])) # doctest: +NORMALIZE_WHITESPACE
-      Status   Progress   Tag   Experiment ID   Chamber ID   Config   Submitted On
-    ────────────────────────────────────────────────────────────────────────────────
-      --- No active experiments ---
-    ────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-      ... Call rlab.get_experiments() to see all your experiments.
-    """
-    _check_print_max(print_max)
-    in_flight = [e for e in experiments if e.get('status') != 'QUEUED']
-    queued = [e for e in experiments if e.get('status') == 'QUEUED']
-    n = len(queued) if print_max is None else min(print_max, len(queued))
-    table = _Table(_EXPERIMENT_HEADERS)
-    if len(in_flight) > 0:
-        table.add_label("--- In-flight experiments ---")
-        for experiment in in_flight:
-            _add_experiment_row(table, experiment)
-        if len(queued) > 0:
-            table.add_label("")
-    if len(queued) > 0:
-        table.add_label("--- Queued experiments ---")
-        for experiment in queued[0:n]:
-            _add_experiment_row(table, experiment)
-        if n < len(queued):
-            table.add_label("")
-            table.add_label(f"--- showing {n} / {len(queued)} queued experiments ---")
-    if len(experiments) == 0:
-        table.add_label("--- No active experiments ---")
-    return Group(table, _datetime_note(), "",
-                 _hint("Call rlab.get_experiments() to see all your experiments."))
 
 
 def _add_experiment_row(table, experiment):
