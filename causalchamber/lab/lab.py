@@ -311,7 +311,7 @@ class Lab():
         if current_status != 'DONE':
             raise UserError(code = 0,
                             message = f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})",
-                            scheduler_id = experiment['scheduler_id'])
+                            scheduler_id = experiment.get('scheduler_id', None))
         else:
             dataset = ExperimentDataset(experiment_id = experiment_id,
                                         download_url = experiment['download_url'],
