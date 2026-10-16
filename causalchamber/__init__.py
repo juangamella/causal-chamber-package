@@ -34,47 +34,56 @@ def _is_interactive():
 def _print_welcome_message():
     """Print the welcome message displayed on import."""
     from importlib.metadata import version, PackageNotFoundError
-    from rich.console import Console
+    from rich.console import Console, Group
     from rich.markup import escape
+    from rich.padding import Padding
+    from rich.table import Table
 
     try:
         title = f"Causal Chamber® v{version('causalchamber')}"
     except PackageNotFoundError:
         # e.g., when running from source without installing the package
         title = "Causal Chamber®"
-    # No borders/panels around the citation so it can be copy-pasted
-    citation = "\n".join("    " + line for line in _CITATION.splitlines())
     email = "support@causalchamber.ai"
     docs = "docs.causalchamber.ai"
+    # Two columns: section names (right-aligned) and their text
+    # (left-aligned). A grid has no borders, so the citation can still
+    # be copy-pasted; padding=(1, 2) leaves a blank line between
+    # sections and two spaces between columns.
+    sections = Table.grid(padding=(1, 2))
+    sections.add_column(justify="right", style="bold")
+    sections.add_column(justify="left")
+    sections.add_row(
+        "Login",
+        "To log into the Remote Lab, call\n\n"
+        "  >>> import causalchamber.lab as lab\n"
+        "  >>> lab.login()",
+    )
+    sections.add_row(
+        "Documentation", f"Guides and examples at [link=https://{docs}]{docs}[/link]"
+    )
+    sections.add_row(
+        "Support", f"Issues or feedback? Write us at [link=mailto:{email}]{email}[/link]"
+    )
+    sections.add_row(
+        "Citation",
+        "If you use our datasets, simulators or Remote Lab for your work,\n"
+        "please consider citing:\n\n"
+        + escape(_CITATION),
+    )
+    # Print everything in a single call: in Jupyter, each call is
+    # rendered as a separate output block, with large gaps between them
     console = Console(highlight=False)
     console.print(
-        f"""
-[bold]{escape(title)}[/bold]
-
-  [bold]Login[/bold]
-
-    To log into the Remote Lab, call
-
-      >>> import causalchamber.lab as lab
-      >>> lab.login()
-
-  [bold]Documentation[/bold]
-
-    Guides and examples at [link=https://{docs}]{docs}[/link]
-
-  [bold]Support[/bold]
-
-    Issues or feedback? Write us at [link=mailto:{email}]{email}[/link]
-
-  [bold]Citation[/bold]
-
-    If you use our datasets, simulators or Remote Lab for your work, please consider citing:
-
-{escape(citation)}
-
-  [dim]Set the env. variable CAUSALCHAMBER_QUIET=1 to hide this message.[/dim]
-""",
-        soft_wrap=True,
+        Group(
+            "",
+            f"[bold]{escape(title)}[/bold]",
+            "",
+            Padding(sections, (0, 0, 0, 2), expand=False),
+            "",
+            "  [dim]Set the env. variable CAUSALCHAMBER_QUIET=1 to hide this message.[/dim]",
+            "",
+        )
     )
 
 
