@@ -298,7 +298,7 @@ def _chambers_panel(chambers, sessions, now, lines):
         body = Text("No chambers available.", style=_DIM_STYLE)
         return (_panel(body, "Chambers", count, height=lines + 2),
                 _panel_width(body, "Chambers", count))
-    subtitle = _prompt("rlab.get_queue(<id>)", "to see a chamber's queue")
+    subtitle = _prompt("rlab.get_chamber(<id>)", "for details")
 
     def order(chamber):
         state = chamber.get('state')
@@ -326,7 +326,7 @@ def _sessions_panel(sessions, now):
     count = f"{len(sessions)} active"
     if len(sessions) == 0:
         body = Text("No active sessions.", style=_DIM_STYLE)
-        return _panel(body, "Sessions", count), _panel_width(body, "Sessions", count)
+        return _panel(body, "Interactive Sessions", count), _panel_width(body, "Interactive Sessions", count)
     table = _table(["", "Session ID", "Chamber", "Config", "Expires"])
     for session in sessions:
         table.add_row(Text("●", style=f"blink {_GREEN}"),
@@ -335,8 +335,8 @@ def _sessions_panel(sessions, now):
                       _value(session.get('chamber_config')),
                       _fmt_expires(session.get('expires_on'), now))
     subtitle = _prompt("rlab.stop_session(<id>)")
-    return (_panel(table, "Sessions", count, subtitle),
-            _panel_width(table, "Sessions", count, subtitle))
+    return (_panel(table, "Interactive Sessions", count, subtitle),
+            _panel_width(table, "Interactive Sessions", count, subtitle))
 
 
 def _experiments_panel(experiments, now):
@@ -354,8 +354,8 @@ def _experiments_panel(experiments, now):
     subtitle = _prompt("rlab.get_experiments()", "for all")
     if len(experiments) == 0:
         body = Text("No active experiments.", style=_DIM_STYLE)
-        return (_panel(body, "Experiments", count, subtitle),
-                _panel_width(body, "Experiments", count, subtitle))
+        return (_panel(body, "Experiment Queue", count, subtitle),
+                _panel_width(body, "Experiment Queue", count, subtitle))
     headers = ["Status", "Progress", "Runtime", "Experiment ID", "Tag", "Chamber", "Config", "Submitted"]
     in_flight_rows = [_experiment_row(e, now) for e in in_flight]
     waiting_rows = [_experiment_row(e, now) for e in waiting[0:_MAX_WAITING]]
@@ -376,8 +376,8 @@ def _experiments_panel(experiments, now):
     if len(waiting) > _MAX_WAITING:
         parts.append(Text(f"+ {len(waiting) - _MAX_WAITING} more queued", style=_DIM_STYLE))
     body = Group(*parts)
-    return (_panel(body, "Experiments", count, subtitle),
-            _panel_width(body, "Experiments", count, subtitle))
+    return (_panel(body, "Experiment Queue", count, subtitle),
+            _panel_width(body, "Experiment Queue", count, subtitle))
 
 
 def _experiment_row(experiment, now):
