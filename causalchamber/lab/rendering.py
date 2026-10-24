@@ -113,6 +113,26 @@ def print_dashboard(account):
     Console(highlight=False, width=width).print(renderable)
 
 
+# TODO (step 3 of plan.md): implement the functions below
+
+def run_monitor(fetch_account, refresh_rate):
+    """Show the dashboard live, fetching the account with
+    fetch_account() every refresh_rate seconds, until Ctrl+C."""
+    raise NotImplementedError("Lab.monitor is not implemented yet")
+
+
+def print_chamber(chamber, user_id, print_max=10):
+    """Print the details of a chamber, as returned by GET
+    /v1/chambers/{chamber_id}."""
+    raise NotImplementedError("Printing a chamber is not implemented yet; use verbose=False")
+
+
+def print_experiments(experiments):
+    """Print the given experiments, as returned by GET
+    /v1/experiments."""
+    raise NotImplementedError("Printing experiments is not implemented yet; use verbose=False")
+
+
 # --------------------------------------------------------------------
 # Rendering
 

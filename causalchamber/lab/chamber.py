@@ -50,7 +50,8 @@ from causalchamber.lab.api import API
 
 class Chamber():
     """
-    Interface for operating a Causal Chamber® in real time..
+    Interface for operating a Causal Chamber® in real time, through
+    an interactive session.
     
     
     Attributes
@@ -71,14 +72,15 @@ class Chamber():
         Verbosity level for output messages.
     """
     
-    def __init__(self, chamber_id, config, credentials_file=None, endpoint="https://api.causalchamber.ai/v1", verbose=1, credentials=None):
-        """Start a new real-time connection to the specified chamber,
+    def __init__(self, chamber_id, config, credentials_file=None, endpoint="https://api.causalchamber.ai/v1", verbose=1, credentials=None, duration=None):
+        """Start a new interactive session with the specified chamber,
         returning a lab.Chamber instance to control it.
-        
-        The chamber will reset & verify its hardware, and stop
-        attending any other active connections (i.e., instances of
-        lab.Chamber)
-        
+
+        The chamber will reset & verify its hardware. The whole
+        duration of the session is charged when it starts (1 credit
+        per second); to stop it early and get a refund for the unused
+        time, see Lab.stop_session, or use Lab.new_session instead.
+
         Parameters
         ----------
         chamber_id : str
@@ -104,7 +106,11 @@ class Chamber():
             A tuple (<user>, <password>) with the user and password
             for the API. Either credentials or credentials_file
             must be provided. If both are, credentials is used.
-        
+        duration : int or None, optional
+            The maximum duration of the session, in seconds. If None
+            (default), the API's default duration is used (30 days),
+            which you may not have enough credits for.
+
         Raises
         ------
         FileNotFoundError
@@ -112,22 +118,47 @@ class Chamber():
         ValueError
             If neither credentials nor credentials_file is provided.
         UserError
-            If credentials are incorrect, or the requested chamber or
-            configuration do not exist.        
+            If credentials are incorrect, the requested chamber or
+            configuration do not exist, the chamber is in use by
+            another session, or you do not have enough credits.
         LabError
             If no connection to the API can be established or an error
             on our side prevents starting a session with the chamber.
 
+        """
+        # Load credentials
+        self._API = API(credentials_file = credentials_file,
+                        endpoint = endpoint,
+                        credentials = credentials)
+        self._start_session(chamber_id, config, duration, verbose)
+
+    def _start_session(self, chamber_id, config, duration, verbose):
+        """
+        Start an interactive session with the chamber, using the API
+        client in self._API.
+
+        Internal method used by __init__ and lab.Session.
+
+        Parameters
+        ----------
+        chamber_id : str
+            The unique chamber identifier.
+        config : str
+            Desired configuration of the chamber.
+        duration : int or None
+            The maximum duration of the session, in seconds, or None
+            for the API's default.
+        verbose : int or bool
+            Verbosity level for status messages.
         """
         # Store parameters
         self._chamber_id = chamber_id
         self._config = config
         self._verbose = verbose
 
-        # Load credentials
-        self._API = API(credentials_file = credentials_file,
-                        endpoint = endpoint,
-                        credentials = credentials)
+        body = {'chamber_id': chamber_id, 'chamber_config': config}
+        if duration is not None:
+            body['duration_seconds'] = duration
 
         # Start a session
         if self.verbose:
@@ -138,15 +169,16 @@ class Chamber():
             start = timeit.default_timer()
 
         try:
-            response = self._API.make_request('POST', 'sessions', {'chamber_id': chamber_id, 'chamber_config': config})
-            self._session_id = response.json()['session_id']
-            self._chamber_model = response.json()['chamber_model']
-            self._config_version = response.json()['config_version']
-            self._documentation = response.json()['documentation']
-            self._codebase_version = response.json()['codebase_version']
+            response = self._API.make_request('POST', 'sessions', body)
+            session = response.json()['session']
+            self._session_id = session['session_id']
+            self._chamber_model = session.get('chamber_model')
+            self._config_version = session.get('config_version')
+            self._documentation = session.get('documentation')
+            self._codebase_version = session.get('codebase_version')
         finally:
             spinner.stop() if self.verbose else None
-            
+
         if self.verbose:
             print(f"  Done. ({timeit.default_timer() - start:0.2f} seconds)")
             print(self)
@@ -229,6 +261,48 @@ class Chamber():
         the Chamber.measure(..) documentation for full details.
         """
         return self.measure(n, delay)
+
+    def wait(self, milliseconds, limit=30000):
+        """Make the chamber wait the given milliseconds, i.e., sends a
+        WAIT,:milliseconds instruction to the chamber. The call
+        returns once the chamber has waited.
+
+        The chamber will be busy during this time, i.e., not attend
+        other instructions, so use with care. As a default, there is a
+        limit of 30 seconds (30000 ms) which must be manually
+        overriden.
+
+        Parameters
+        ----------
+        milliseconds : int
+            Duration to wait in milliseconds. Must be positive.
+        limit: int or None
+            To avoid accidentally blocking the chamber, if limit is
+            not None and milliseconds is above limit, a
+            ValueError exception is raised. Setting limit to None
+            means no check is performed. Default is 30 seconds (30000
+            ms).
+
+        Raises
+        ------
+        TypeError
+            If milliseconds is not an integer.
+        ValueError
+            If milliseconds is not positive or milliseconds is larger
+            than limit.
+        UserError
+            If the chamber is currently busy restarting or executing
+            other instructions (code 409), or the wait is longer than
+            allowed by the API (code 422).
+        LabError
+            If there is an error on our side, e.g., an internal server
+            error, a hardware error or a connection issue.
+
+        """
+        instruction = _generate_wait(milliseconds)
+        if limit is not None and milliseconds > limit:
+            raise ValueError(f"milliseconds ({milliseconds}) is larger than the set limit ({limit} ms). Set 'limit=None' to override.")
+        return self._submit_instructions([instruction])
 
     @property
     def verbose(self):

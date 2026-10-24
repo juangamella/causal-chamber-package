@@ -27,14 +27,11 @@ Module to access the Causal Chamber® Remote Lab.
 # Standard library packages
 import pathlib
 import os
-from datetime import datetime
-import time
+import math
 import numbers
+import warnings
 
 # Third-party packages
-from rich.console import Console, Group
-from rich.measure import Measurement
-from rich.text import Text
 import numpy as np
 import pandas as pd
 import yaml
@@ -42,11 +39,15 @@ from PIL import Image
 
 # Imports from this package
 from causalchamber.lab.utils import download_and_extract
-from causalchamber.lab.chamber import Batch
+from causalchamber.lab.chamber import Batch, Chamber
 from causalchamber.lab.api import API
 from causalchamber.lab.exceptions import LabError, UserError
 from causalchamber import _is_interactive, _PROMPT, _CODE_STYLE
-from causalchamber.lab.rendering import print_dashboard
+from causalchamber.lab.rendering import (print_dashboard, print_chamber, print_experiments,
+                                         run_monitor, _fmt_duration)
+
+# Minimum number of seconds between refreshes of Lab.monitor
+_MIN_REFRESH_RATE = 5
 
 # --------------------------------------------------------------------
 # Login
@@ -118,7 +119,7 @@ def login(credentials=None, credentials_file=None, endpoint="https://api.causalc
         Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v1".
     verbose : bool, optional
         If True (default), this will print your user info (including
-        your credits), your active real-time sessions and (up to 10
+        your credits), your active interactive sessions and (up to 10
         of) your active experiments. If False, nothing is printed.
 
     Returns
@@ -217,10 +218,11 @@ class Lab():
     Main interface for interacting with the Remote Lab.
     
     This class provides methods to
-      - check chamber status
-      - create, cancel and submit experiments to a chamber queue
+      - monitor your account, chambers, sessions and experiments
+      - check the details of a chamber, including its queue
+      - create, submit and cancel experiments in a chamber's queue
       - download the data from completed experiments
-      - open a real-time connection to a chamber
+      - start and stop interactive sessions with a chamber
     """
 
     def __init__(self, credentials_file=None, endpoint="https://api.causalchamber.ai/v1", verbose=True, credentials=None):
@@ -242,7 +244,7 @@ class Lab():
             Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v1".
         verbose : bool, optional
             If True (default), this will print your user info
-            (including your credits), your active real-time sessions
+            (including your credits), your active interactive sessions
             and (up to 10 of) your active experiments. If False,
             nothing is printed.
         credentials : tuple of string or None, optional        
@@ -272,7 +274,7 @@ class Lab():
     def get_account(self):
         """
         Retrieve the details of your account, including your credits,
-        the chambers you can use, and your active real-time sessions
+        the chambers you can use, and your active interactive sessions
         and experiments.
 
         Returns
@@ -280,7 +282,7 @@ class Lab():
         dict
             Dictionary with the account details, including the
             user_id, name, email, institution, wallet (with your
-            credits), chambers, sessions (active real-time sessions)
+            credits), chambers, sessions (active interactive sessions)
             and experiments (active experiments).
 
         Raises
@@ -294,30 +296,87 @@ class Lab():
         response = self._API.make_request('GET', 'account')
         return response.json()['account']
 
-    def dashboard(self):
+    def monitor(self, refresh_rate=5):
         """
-        Print the dashboard: your account and credits, the chambers
-        you can use and when they are available, and your active
-        real-time sessions and experiments.
+        Show the dashboard live: your account and credits, the
+        chambers you can use and when they are available, and your
+        active interactive sessions and experiments, refreshed every
+        refresh_rate seconds. Stop it with Ctrl+C.
+
+        Parameters
+        ----------
+        refresh_rate : int or float, optional
+            Seconds between refreshes, at least 5. Default is 5.
 
         Raises
         ------
+        TypeError
+            If refresh_rate is not a number.
+        ValueError
+            If refresh_rate is smaller than 5 or not finite.
         UserError
             If the credentials are incorrect.
         LabError
             If no connection to the API can be established or an
             internal error ocurred on our side.
         """
-        print_dashboard(self.get_account())
+        _check_refresh_rate(refresh_rate)
+        run_monitor(self.get_account, refresh_rate)
+
+    def new_session(self, chamber_id, config, duration, verbose=True):
+        """
+        Start an interactive session with a chamber, returning a
+        lab.Session object to control it in real time.
+
+        The chamber resets and loads the given configuration. The
+        whole duration of the session is charged when it starts (1
+        credit per second, including the time it takes the chamber
+        to reset), and the unused time is refunded if you stop it
+        before it expires (see Session.stop). The session can also be
+        used as a context manager, which stops it on exit, e.g.,
+
+            with rlab.new_session('lt-demo-x81a', 'standard', duration=600) as session:
+                session.set('red', 255)
+                data = session.measure(n=10)
+
+        Parameters
+        ----------
+        chamber_id : str
+            The unique identifier of the chamber.
+        config : str
+            The configuration the chamber should load.
+        duration : int
+            The maximum duration of the session, in seconds.
+        verbose : bool, optional
+            If True (default), progress messages and the details of
+            the session are printed. If False, nothing is printed.
+
+        Returns
+        -------
+        Session
+            The lab.Session object to control the chamber.
+
+        Raises
+        ------
+        UserError
+            If the credentials are incorrect, the chamber does not
+            exist or is not in interactive mode, the configuration
+            or duration are invalid, the chamber is in use by another
+            session, or you do not have enough credits.
+        LabError
+            If no connection to the API can be established or an error
+            on our side prevents starting the session.
+        """
+        return Session(self, chamber_id, config, duration, verbose=verbose)
 
     def stop_session(self, session_id, verbose=True):
         """
-        Stop one of your active real-time sessions. Its instructions
-        are refused from then on, and the credits for its unused time
-        (1 credit per whole second) are refunded.
+        Stop one of your active interactive sessions. Its
+        instructions are refused from then on, and the credits for
+        its unused time (1 credit per whole second) are refunded.
 
         Your active sessions are listed in the dashboard (see
-        Lab.dashboard).
+        Lab.monitor).
 
         Parameters
         ----------
@@ -330,8 +389,8 @@ class Lab():
         Returns
         -------
         dict
-            Dictionary with the session_id, the refund (in credits)
-            and the unused_duration (in seconds) of the session.
+            The stopped session, including its refund (in credits) and
+            its unused_seconds.
 
         Raises
         ------
@@ -346,168 +405,147 @@ class Lab():
             If no connection to the API can be established or an
             internal error ocurred on our side.
         """
-        if not isinstance(session_id, str):
-            raise TypeError(f"session_id must be a string, not {type(session_id).__name__}")
-        try:
-            response = self._API.make_request('POST', f'sessions/{session_id}/stop', {})
-        except LabError as e:
-            # The API returns 404 for sessions that do not exist or
-            # belong to another user, i.e., an error on the user's side
-            if e.code == 404:
-                raise UserError(404, f"Session '{session_id}' does not exist or does not belong to you.",
-                                request_id=e.request_id, scheduler_id=e.scheduler_id)
-            raise
-        result = response.json()
+        _check_id(session_id, 'session_id')
+        response = self._API.make_request('POST', f'sessions/{session_id}/stop',
+                                          not_found=f"Session '{session_id}' does not exist or does not belong to you.")
+        session = response.json()['session']
         if verbose:
-            print(f"Stopped session {session_id}; {result.get('refund', 0):,} credits were refunded for its unused time.")
-        return result
+            print(f"Stopped session {session_id}; {session.get('refund', 0):,} credits were refunded for its unused time.")
+        return session
 
-    def get_queue(self, chamber_id, verbose=True, print_max=10):
-        """Retrieve the experiments that are waiting in the queue of the
-        given chamber, including the experiment it is currently
-        executing (if any).
+    def get_chamber(self, chamber_id, verbose=True, print_max=10):
+        """
+        Retrieve the details of a chamber: whether it is in use and
+        when it is available, its configurations (with links to
+        their documentation), and its queue (in queue mode) or active
+        session (in interactive mode).
 
         Parameters
         ----------
         chamber_id : str
             The unique identifier of the chamber.
         verbose : bool, optional
-            If True (default), this will print a table with the
-            experiments in the queue, their position and the user to
-            whom they belong.
+            If True (default), the details are printed. If False,
+            nothing is printed.
         print_max : int or None, optional
             Maximum number of queued experiments to print (if
-            verbose=True). If None, all queued experiments are
-            printed. Default is 10.
+            verbose=True). If None, all are printed. Default is 10.
 
         Returns
         -------
-        list of dict
-            List of dictionaries containing the details of each
-            experiment, including status, chamber_id, config, user,
-            submission time, and other metadata, sorted by queue
-            position. The experiment currently being executed (if any)
-            has position 0.
+        dict
+            The chamber, with its chamber_id, chamber_model, mode,
+            chamber_state, available_on, configs, queue (in queue
+            mode; None otherwise) and session (None if it has no
+            active session). The queue starts with the experiment in
+            flight, if any (position 0), followed by the queued ones
+            in order.
 
         Raises
         ------
         TypeError
-            If verbose=True and print_max is not an integer or None.
+            If chamber_id is not a string, or print_max is not an
+            integer or None.
         ValueError
-            If verbose=True and print_max is not larger than zero.
+            If print_max is not larger than zero.
         UserError
-            If the credentials are incorrect, the given chamber_id does
-            not exist, or the corresponding chamber is not in queue mode.        
+            If the credentials are incorrect, or the chamber does not
+            exist or you do not have access to it (code 404).
         LabError
             If no connection to the API can be established or an
             internal error ocurred on our side.
-
         """
-        response = self._API.make_request('GET', f'queues/{chamber_id}')
-        experiments = response.json()['experiments']
-        # Sort by queue position
-        sorted_by_position = sorted(experiments, key=lambda x: x['position'])
-        # Optionally, print list of experiments
+        _check_id(chamber_id, 'chamber_id')
+        _check_positive_int(print_max, 'print_max', allow_none=True)
+        response = self._API.make_request('GET', f'chambers/{chamber_id}',
+                                          not_found=f"Chamber '{chamber_id}' does not exist or you do not have access to it.")
+        chamber = response.json()['chamber']
         if verbose:
-            _print_queue_table(sorted_by_position, chamber_id, print_max=print_max)
-        # Return experiments
-        return sorted_by_position
-        
+            print_chamber(chamber, self._API.user_id, print_max=print_max)
+        return chamber
+
+    def get_queue(self, chamber_id, verbose=True, print_max=10):
+        """
+        Retrieve the details of a chamber, including its queue. Same
+        as Lab.get_chamber, see its documentation.
+        """
+        return self.get_chamber(chamber_id, verbose=verbose, print_max=print_max)
+
     def get_experiment(self, experiment_id):
         """
-        Retrieve the details of a specific experiment.
-        
+        Retrieve the details of one of your experiments.
+
         Parameters
         ----------
         experiment_id : str
             The unique identifier of the experiment.
-        
+
         Returns
         -------
         dict
-            Dictionary containing the experiment details including
-            status, chamber_id, config, submission time, and other
-            metadata.
-
-        Raises
-        ------
-        UserError
-            If the credentials are incorrect.
-        LabError
-            If no connection to the API can be established or an
-            internal error ocurred on our side.
-        """
-        response = self._API.make_request('GET', f'experiments/{experiment_id}')
-        return response.json()
-    
-    def get_experiments(self, verbose=True, print_max=10):
-        """
-        Retrieve a list of all your experiments.
-        
-        Parameters
-        ----------
-        verbose : bool, optional        
-            If True (default), this will print a table with the
-            experiments belonging to the user in the credentials
-            file. If False, nothing is printed.
-        print_max : int or None, optional
-            Maximum number of experiments to print (if
-            verbose=True). If None, all experiments belonging to the
-            user are printed. Default is 10.
+            The experiment, including its status, chamber_id,
+            chamber_config, submission time, progress and, once it is
+            DONE, the download_url of its data.
 
         Raises
         ------
         TypeError
-            If verbose=True and print_max is not an integer or None.
-        ValueError
-            If verbose=True and print_max is not larger than zero.
-        
-        Returns
-        -------
-        list of dict
-            List of dictionaries containing information about each
-            experiment, sorted by submission time (newest first).
+            If experiment_id is not a string.
+        UserError
+            If the credentials are incorrect, the experiment_id is
+            invalid (code 400), or the experiment does not exist or
+            does not belong to you (code 404).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        _check_id(experiment_id, 'experiment_id')
+        response = self._API.make_request('GET', f'experiments/{experiment_id}',
+                                          not_found=f"Experiment '{experiment_id}' does not exist or does not belong to you.")
+        return response.json()['experiment']
 
+    def get_experiments(self, verbose=True, fetch_max=10):
         """
-        # Call API
-        response = self._API.make_request('GET', 'experiments')
-        experiments = response.json()['experiments']
-        # Sort by submission time
-        newest_first = sorted(experiments, key=lambda x: x['submitted_on'], reverse=True)
-        # Optionally, print list of experiments
-        if verbose:
-            _print_experiment_table(newest_first, print_max=print_max)
-        # Return experiments
-        return newest_first
-    
-    def get_available_chambers(self, verbose=True):
-        """
-        Retrieve a list of the available chambers.
-        
+        Retrieve your latest experiments, on any chamber, newest first.
+
         Parameters
         ----------
         verbose : bool, optional
-            If True (default), this will print a table with
-            information about the available chambers.
-        
+            If True (default), the experiments are printed, split in
+            in flight, queued and finished. If False, nothing is
+            printed.
+        fetch_max : int, optional
+            Maximum number of experiments to retrieve (the latest
+            ones). Default is 10.
+
         Returns
         -------
         list of dict
-            List of dictionaries containing chamber_id, status, model,
-            mode, and valid configurations of each chamber.
-        
+            The experiments, newest first.
+
+        Raises
+        ------
+        TypeError
+            If fetch_max is not an integer.
+        ValueError
+            If fetch_max is not larger than zero.
+        UserError
+            If the credentials are incorrect, or fetch_max is larger
+            than allowed by the API (code 400).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
         """
-        response = self._API.make_request('GET', 'chambers')
-        chambers = response.json()['chambers']
-        # Optionally, print list of chambers
+        _check_positive_int(fetch_max, 'fetch_max')
+        response = self._API.make_request('GET', 'experiments', query={'limit': fetch_max})
+        experiments = response.json()['experiments']
         if verbose:
-            _print_chamber_table(chambers)
-        # Return list of chambers
-        return chambers
+            print_experiments(experiments)
+        return experiments
 
     def new_experiment(self, chamber_id, config):
         """Create a new experiment protocol.
-        
+
         Parameters
         ----------
         chamber_id : str
@@ -516,39 +554,56 @@ class Lab():
         config : str
             The name of the configuration the chamber should load to
             execute this experiment.
-        
+
         Returns
         -------
         Protocol
-            The lab.Protocol object that can be used to add instructions and submit
-            the experiment.
-        
+            The lab.Protocol object that can be used to add
+            instructions, check the cost of the experiment and submit
+            it.
+
         """
-        # TODO: decide if checking chamber and config is done here
         return Protocol(chamber_id, config, self._API)
 
     def cancel_experiment(self, experiment_id):
         """
-        Cancel a queued experiment.
-        
+        Cancel one of your experiments. A queued experiment is
+        canceled at once and its charge refunded in full. A running
+        experiment is stopped by the chamber before its next
+        instruction (its status is then STOPPING, and CANCELED once
+        stopped), and the credits for its unused time are refunded.
+
         Parameters
         ----------
         experiment_id : str
             The unique identifier of the experiment to cancel.
-        
+
         Returns
         -------
         dict
-            Dictionary containing the updated experiment metadata.
-        
+            The experiment, with its updated status.
+
+        Raises
+        ------
+        TypeError
+            If experiment_id is not a string.
+        UserError
+            If the credentials are incorrect, the experiment does not
+            exist or does not belong to you (code 404), or it cannot
+            be canceled, e.g., because it already finished (code 409).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
         """
-        response = self._API.make_request('POST', f'experiments/{experiment_id}/cancel')
-        return response.json()
+        _check_id(experiment_id, 'experiment_id')
+        response = self._API.make_request('POST', f'experiments/{experiment_id}/cancel',
+                                          not_found=f"Experiment '{experiment_id}' does not exist or does not belong to you.")
+        return response.json()['experiment']
 
     def download_data(self, experiment_id, root, verbose=True):
         """
         Download data from a completed experiment.
-        
+
         Parameters
         ----------
         experiment_id : str
@@ -558,7 +613,7 @@ class Lab():
         verbose : bool, optional
             If True, traces are printed and a download progress bar is
             shown. If False no outputs are produced. Defauls to True.
-        
+
         Returns
         -------
         ExperimentDataset
@@ -570,7 +625,8 @@ class Lab():
         Raises
         ------
         UserError
-            If the experiment is not in 'DONE' status.
+            If the experiment is not in 'DONE' status, or it does not
+            exist or does not belong to you (code 404).
         FileNotFoundError
             If the root directory does not exist.
         requests.HTTPError
@@ -585,8 +641,7 @@ class Lab():
         # TODO: explicitly say: cannot download data because ...
         if current_status != 'DONE':
             raise UserError(code = 0,
-                            message = f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})",
-                            scheduler_id = experiment.get('scheduler_id', None))
+                            message = f"Experiment '{experiment_id}' is not finished yet (current status = {current_status})")
         else:
             dataset = ExperimentDataset(experiment_id = experiment_id,
                                         download_url = experiment['download_url'],
@@ -594,7 +649,8 @@ class Lab():
                                         root = root,
                                         verbose=verbose)
             return dataset
-        
+
+
 class Protocol(Batch):
     """
     Object representing an experiment protocol, i.e., collection of
@@ -679,24 +735,147 @@ class Protocol(Batch):
             If tag is not a string or None.
         UserError
             If the protocol contains invalid / incorrect instructions
-            for the given chamber & config, or if the user has reached
-            the maximum number of experiments in the queue.
+            for the given chamber & config, the user has reached the
+            maximum number of experiments in the queue, or does not
+            have enough credits.
         LabError
             If no connection to the API can be established or an error
             on our side prevents submitting the experiment.
 
         """
         # POST /experiments
-        body = {'chamber_id': self._chamber_id,
-                'chamber_config': self._config,
-                'instructions': self._instructions}
+        body = self._body()
         if tag is not None and not isinstance(tag, str):
             raise TypeError(f"tag must be str, not {type(tag).__name__}")
         elif tag is not None:
             body['tag'] = tag
         response = self._API.make_request('POST', 'experiments', body)
         # Return the experiment id
-        return response.json()['experiment_id']
+        return response.json()['experiment']['experiment_id']
+
+    def cost(self, verbose=True):
+        """Return the most the experiment can cost, in credits, without
+        submitting it.
+
+        When the experiment is submitted, its estimated runtime is
+        charged (1 credit per second). If it finishes earlier, the
+        difference is refunded; if it takes longer, nothing more is
+        charged.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True (default), the cost and estimated runtime are
+            printed. If False, nothing is printed.
+
+        Returns
+        -------
+        int
+            The most the experiment can cost, in credits.
+
+        Raises
+        ------
+        UserError
+            If the protocol contains invalid / incorrect instructions
+            for the given chamber & config, or exceeds the limits of
+            the chamber's queue.
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+
+        """
+        response = self._API.make_request('POST', 'experiments/quote', self._body())
+        quote = response.json()['quote']
+        cost = quote['credits_max']
+        if verbose:
+            print(f"This experiment will cost at most {cost:,} credits (estimated runtime is "
+                  f"{_fmt_duration(quote['est_runtime_seconds'])}). If the experiment finishes "
+                  "before the estimated runtime, we will refund the difference.")
+        return cost
+
+    def _body(self):
+        """Return the body of the requests to submit or quote the protocol."""
+        return {'chamber_id': self._chamber_id,
+                'chamber_config': self._config,
+                'instructions': self._instructions}
+
+
+class Session(Chamber):
+    """
+    An interactive session with a chamber, to control it in real
+    time. Returned by Lab.new_session; see the lab.Chamber class for
+    the methods to send instructions to the chamber.
+
+    It can be used as a context manager, which stops the session on
+    exit (see Session.stop).
+    """
+
+    def __init__(self, lab, chamber_id, config, duration, verbose=True):
+        """
+        Start a new interactive session. Use Lab.new_session instead.
+
+        Parameters
+        ----------
+        lab : lab.Lab
+            The lab which started the session, whose API client the
+            session uses.
+        chamber_id : str
+            The unique identifier of the chamber.
+        config : str
+            The configuration the chamber should load.
+        duration : int
+            The maximum duration of the session, in seconds.
+        verbose : bool, optional
+            If True (default), progress messages and the details of
+            the session are printed. If False, nothing is printed.
+        """
+        # We purposefully overwrite the init method of
+        # lab.chamber.Chamber, to reuse the API client of the lab
+        self._lab = lab
+        self._API = lab._API
+        self._start_session(chamber_id, config, duration, verbose)
+
+    def stop(self):
+        """
+        Stop the session. Its instructions are refused from then on,
+        and the credits for its unused time (1 credit per whole
+        second) are refunded. See Lab.stop_session.
+
+        Returns
+        -------
+        dict
+            The stopped session, including its refund (in credits) and
+            its unused_seconds.
+
+        Raises
+        ------
+        UserError
+            If the session is no longer active, i.e., it was already
+            stopped, its time is up, or it was replaced by a newer
+            session (code 409).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        return self._lab.stop_session(self.session_id, verbose=bool(self.verbose))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Stop the session, unless it is no longer active. If the
+        block raised an exception, a failure to stop the session is
+        only warned about, so that it does not hide the exception."""
+        try:
+            self.stop()
+        except UserError as e:
+            # Already stopped, expired or replaced: nothing to stop
+            if e.code != 409:
+                _raise_or_warn(e, exc_type, self.session_id)
+        except LabError as e:
+            _raise_or_warn(e, exc_type, self.session_id)
+        # Do not suppress the exception raised in the block, if any
+        return False
 
 
 
@@ -842,621 +1021,92 @@ class ExperimentDataset():
 # --------------------------------------------------------------------
 # Auxiliary functions
 
-# Mid-tone colors with similar contrast (~4:1) on light and dark
-# backgrounds, given as hex so terminals don't remap them
-_GREEN = '#248f47'
-_TEAL = '#158c8c'
-_RED = '#e63f39'
-_GREY = '#7d7d7d'
-
-_STATUS_COLORS = {
-    # Chamber status
-    'READY': _GREEN,
-    'LOADING': _TEAL,
-    'EXECUTING': _TEAL,
-    'ERROR': _RED,
-    'OFFLINE': _RED,
-    # Experiment status: the terminal's own palette colors, as in
-    # earlier versions of the package (with termcolor)
-    'QUEUED': 'yellow',
-    'SUBMITTING': 'bright_yellow',
-    'RUNNING': 'green',
-    'STOPPING': 'magenta',
-    'FAILED': 'bright_red',
-    'CANCELED': '#969696',
-    'DONE': 'bright_green',
-    }
-
-# Value shown for missing fields
-_NA = "NA"
+def _raise_or_warn(error, exc_type, session_id):
+    """Raise the error from stopping a session on exiting its context,
+    or only warn about it if the block raised an exception (exc_type
+    is not None), so that it does not hide it."""
+    if exc_type is None:
+        raise error
+    warnings.warn(f"Could not stop session '{session_id}': {error.message}")
 
 
-def _fmt_status(status):
+def _check_id(value, name):
     """
-    Format a status string with the appropriate color.
-
-    Parameters
-    ----------
-    status : str
-        Status string to format (e.g., 'READY', 'RUNNING', 'DONE').
-
-    Returns
-    -------
-    rich.text.Text
-        The status, styled with its color (if it has one).
+    Check that an id (e.g., experiment_id) is a string.
 
     Examples
     --------
-    >>> _fmt_status('DONE').plain, _fmt_status('DONE').style
-    ('DONE', 'bright_green')
-    >>> _fmt_status('UNKNOWN').plain, _fmt_status('UNKNOWN').style
-    ('UNKNOWN', '')
-    >>> _fmt_status(None).plain
-    'NA'
+    >>> _check_id('f47ac10b', 'experiment_id')
+    >>> _check_id(123, 'experiment_id')
+    Traceback (most recent call last):
+        ...
+    TypeError: experiment_id must be a string, not int
     """
-    if status is None:
-        return Text(_NA)
-    return Text(str(status), style=_STATUS_COLORS.get(status, ''))
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string, not {type(value).__name__}")
 
 
-def _fmt_progress(experiment):
+def _check_positive_int(value, name, allow_none=False):
     """
-    Return the percentage of instructions executed by an experiment, or
-    'NA' if it is not available.
+    Check that a value is an integer larger than zero (or None, if
+    allow_none=True).
 
     Examples
     --------
-    >>> _fmt_progress({'total_instructions': 6002, 'current_instruction': 5429})
-    '90.45 %'
-    >>> _fmt_progress({'total_instructions': 100, 'current_instruction': None})
-    'NA'
-    >>> _fmt_progress({})
-    'NA'
-    """
-    try:
-        current = float(experiment['current_instruction'])
-        return f"{current / experiment['total_instructions'] * 100:.4g} %"
-    except Exception:
-        return _NA
-
-
-def _cell(value):
-    """Return a table cell for the given value, as plain text (i.e.,
-    not parsed as rich markup), or 'NA' if the value is None."""
-    return Text(_NA if value is None else str(value))
-
-
-def _truncate(text, max_length=22):
-    """
-    Return the given text, trimmed at the end with '...' if it is
-    longer than max_length characters, so that the result is at most
-    max_length characters long. None is returned unchanged.
-
-    Examples
-    --------
-    >>> _truncate('user123')
-    'user123'
-    >>> _truncate('a.very.long.username@example.com')
-    'a.very.long.usernam...'
-    >>> len(_truncate('a.very.long.username@example.com'))
-    22
-    >>> _truncate(None) is None
-    True
-    """
-    if text is None or len(text) <= max_length:
-        return text
-    return text[:max_length - 3] + '...'
-
-
-class _Table():
-    """
-    A rich renderable for tables in the style of this package: the
-    column headers, a horizontal rule, the rows and a closing
-    horizontal rule. The rules span the whole width of the table; there
-    are two spaces before the first and after the last column, and
-    three between columns. Cells never wrap.
-
-    Besides rows, the table can contain labels: lines that span the
-    whole table (e.g., '--- showing 10 / 20 experiments ---'), shown in
-    grey and indented like the rows.
-    """
-
-    def __init__(self, headers, right_justified=()):
-        """
-        Parameters
-        ----------
-        headers : list of str
-            The column headers.
-        right_justified : collection of int, optional
-            Indices of the columns that are right-justified. Default is
-            none, i.e., all columns are left-justified.
-        """
-        self._headers = [Text(h) for h in headers]
-        self._right_justified = set(right_justified)
-        self._lines = []  # each entry is a list of cells (a row) or a Text (a label)
-
-    def add_row(self, *cells):
-        """Add a row; cells which are not rich Text are converted to
-        plain text (i.e., not parsed as rich markup)."""
-        self._lines.append([cell if isinstance(cell, Text) else _cell(cell) for cell in cells])
-
-    def add_label(self, text):
-        """Add a label, i.e., a grey line spanning the table. An empty
-        string adds a blank line."""
-        self._lines.append(Text(f"  {text}" if text else "", style=_GREY))
-
-    def _widths(self):
-        rows = [line for line in self._lines if isinstance(line, list)]
-        return [max(cell.cell_len for cell in [header] + [row[i] for row in rows])
-                for i, header in enumerate(self._headers)]
-
-    def _format_row(self, cells, widths):
-        line = Text("  ")
-        for i, (cell, width) in enumerate(zip(cells, widths)):
-            padding = " " * (width - cell.cell_len)
-            line.append("   " if i > 0 else "")
-            line.append_text(Text(padding) + cell if i in self._right_justified else cell + Text(padding))
-        line.append("  ")
-        return line
-
-    def __rich_console__(self, console, options):
-        widths = self._widths()
-        rule = Text("─" * (sum(widths) + 3 * len(widths) + 1))
-        yield self._format_row(self._headers, widths)
-        yield rule
-        for line in self._lines:
-            yield self._format_row(line, widths) if isinstance(line, list) else line
-        yield rule
-
-    def __rich_measure__(self, console, options):
-        widths = self._widths()
-        width = max([sum(widths) + 3 * len(widths) + 1] +
-                    [line.cell_len for line in self._lines if isinstance(line, Text)])
-        return Measurement(width, width)
-
-
-def _datetime_note():
-    """Return the note, shown below tables, explaining that dates and
-    times are given in the local timezone of the machine."""
-    return Text(f" Date/time in your machine's local timezone — current time = {_fmt_timestamp(time.time())}")
-
-
-def _print(*renderables):
-    """
-    Print the given rich renderables (e.g., strings, tables) one after
-    the other.
-
-    They are printed in a single call, so that Jupyter shows them in a
-    single output block. Lines are never wrapped or cropped to fit the
-    width of the console: if they are wider, they overflow as with
-    print().
-    """
-    group = Group(*renderables)
-    console = Console(highlight=False)
-    width = Measurement.get(console, console.options.update(max_width=10_000), group).maximum
-    if width > console.width:
-        console = Console(highlight=False, width=width)
-    console.print(group)
-
-
-def _fmt_timestamp(ts):
-    """
-    Transform an epoch timestamp into a human-readable datetime in the
-    local timezone of the machine.
-    
-    Parameters
-    ----------
-    ts : float
-        Epoch timestamp in seconds.
-    
-    Returns
-    -------
-    str
-        Formatted datetime string, e.g., 'Fri, Feb 13, 2009 23:31:30 UTC'
-    
-    Examples
-    --------
-    >>> _fmt_timestamp(1761471966)
-    'Sun, Oct 26, 2025 10:46:06 CET'
-
-    """
-    return datetime.fromtimestamp(ts).astimezone().strftime('%a, %b %d, %Y %H:%M:%S %Z')
-    
-
-def _chamber_table(chambers):
-    """
-    Return a renderable with a table of chamber information.
-
-    Parameters
-    ----------
-    chambers : list of dict
-        List of dictionaries containing chamber information. Each dictionary
-        should have keys: 'status', 'chamber_id', 'chamber_model', 'mode',
-        and 'valid_configs'.
-
-    Returns
-    -------
-    rich renderable
-    """
-    table = _Table(["Status", "Chamber ID", "Model", "Mode", "Hardware Configurations"])
-    for chamber in chambers:
-        valid_configs = chamber.get('valid_configs', None)
-        if isinstance(valid_configs, list):
-            valid_configs = ', '.join(f"'{config}'" for config in valid_configs)
-        table.add_row(_fmt_status(chamber.get('status')),
-                      _cell(chamber.get('chamber_id')),
-                      _cell(chamber.get('chamber_model')),
-                      _cell(chamber.get('mode')),
-                      _cell(valid_configs))
-    return table
-
-
-def _print_chamber_table(chambers):
-    """
-    Print a formatted table of chamber information.
-
-    Parameters
-    ----------
-    chambers : list of dict
-        List of dictionaries containing chamber information (see _chamber_table).
-
-    Examples
-    --------
-    >>> chambers = [
-    ...     {'status': 'READY', 'chamber_id': 'lt-demo-x81a', 'chamber_model': 'Light Tunnel Mk2',
-    ...      'mode': 'queue', 'valid_configs': ['standard', 'camera']},
-    ...     {'status': 'OFFLINE', 'chamber_id': 'wt-demo-c2q4', 'chamber_model': 'Wind Tunnel Mk2',
-    ...      'mode': None, 'valid_configs': ['standard']}
-    ... ]
-    >>> _print_chamber_table(chambers) # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-      Status    Chamber ID     Model              Mode    Hardware Configurations
-    ───────────────────────────────────────────────────────────────────────────────
-      READY     lt-demo-x81a   Light Tunnel Mk2   queue   'standard', 'camera'
-      OFFLINE   wt-demo-c2q4   Wind Tunnel Mk2    NA      'standard'
-    ───────────────────────────────────────────────────────────────────────────────
-    """
-    _print("", _chamber_table(chambers))
-
-
-def _check_print_max(print_max):
-    """
-    Check that print_max is None or an integer larger than zero.
-
-    Raises
-    ------
-    TypeError
-        If print_max is not an integer or None.
-    ValueError
-        If print_max is less than or equal to zero.
-    """
-    if print_max is not None and (isinstance(print_max, bool) or not isinstance(print_max, numbers.Integral)):
-        raise TypeError(f"print_max must be an integer or None, not {type(print_max).__name__}")
-    if print_max is not None and print_max <= 0:
-        raise ValueError("print_max must be None or an integer larger than zero")
-
-
-def _experiment_table(experiments, print_max=None):
-    """
-    Return a renderable with a table of experiment information,
-    followed by a note on the timezone of the dates.
-
-    Parameters
-    ----------
-    experiments : list of dict
-        List of dictionaries containing experiment information. Each dictionary
-        should have keys: 'status', 'tag', 'experiment_id', 'chamber_id',
-        'config', and 'submitted_on', and optionally
-        'total_instructions' and 'current_instruction' to show the
-        progress.
-    print_max : int or None, optional
-        Maximum number of experiments to print. If None, all experiments
-        are printed. Default is None.
-
-    Returns
-    -------
-    rich renderable
-
-    Raises
-    ------
-    TypeError
-        If print_max is not an integer or None.
-    ValueError
-        If print_max is less than or equal to zero.
-    """
-    _check_print_max(print_max)
-    n = len(experiments) if print_max is None else min(print_max, len(experiments))
-    table = _Table(_EXPERIMENT_HEADERS)
-    for experiment in experiments[0:n]:
-        _add_experiment_row(table, experiment)
-    if n < len(experiments):
-        table.add_label("")
-        table.add_label(f"--- showing {n} / {len(experiments)} experiments ---")
-    return Group(table, _datetime_note())
-
-
-def _add_experiment_row(table, experiment):
-    """Add a row with the given experiment to a table with the
-    columns in _EXPERIMENT_HEADERS."""
-    submitted_on = experiment.get('submitted_on', None)
-    table.add_row(_fmt_status(experiment.get('status')),
-                  _fmt_progress(experiment),
-                  experiment.get('tag'),
-                  experiment.get('experiment_id'),
-                  experiment.get('chamber_id'),
-                  experiment.get('config'),
-                  _NA if submitted_on is None else _fmt_timestamp(submitted_on))
-
-
-_EXPERIMENT_HEADERS = ["Status", "Progress", "Tag", "Experiment ID", "Chamber ID", "Config", "Submitted On"]
-
-
-def _print_experiment_table(experiments, print_max=None):
-    """
-    Print a formatted table of experiment information.
-
-    Parameters
-    ----------
-    experiments : list of dict
-        List of dictionaries containing experiment information (see
-        _experiment_table).
-    print_max : int or None, optional
-        Maximum number of experiments to print. If None, all experiments
-        are printed. Default is None.
-
-    Raises
-    ------
-    TypeError
-        If print_max is not an integer or None.
-    ValueError
-        If print_max is less than or equal to zero.
-    
-    Examples
-    --------
-    >>> experiments = [
-    ...     {'status': 'DONE', 'tag': 'test1', 'experiment_id': 'exp_01',
-    ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
-    ... ]
-    >>> _print_experiment_table(experiments, print_max=10) # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-      Status   Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-      DONE     NA         test1   exp_01          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
-    ──────────────────────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
-    The progress is shown if the experiment has the necessary fields,
-    and a label is shown if not all experiments are printed.
-
-    >>> experiments.append(
-    ...     {'status': 'RUNNING', 'tag': 'test2', 'experiment_id': 'exp_02', 'total_instructions': 6002, 'current_instruction': 5429,
-    ...      'chamber_id': 'ch_01', 'config': 'config_A', 'submitted_on': 1234567890}
-    ... )
-    >>> _print_experiment_table(experiments[::-1], print_max=1) # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-      Status    Progress   Tag     Experiment ID   Chamber ID   Config     Submitted On
-    ───────────────────────────────────────────────────────────────────────────────────────────────────────
-      RUNNING   90.45 %    test2   exp_02          ch_01        config_A   Sat, Feb 14, 2009 00:31:30 CET
-    <BLANKLINE>
-      --- showing 1 / 2 experiments ---
-    ───────────────────────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
-    >>> _print_experiment_table(experiments, print_max=10.5)
+    >>> _check_positive_int(10, 'fetch_max')
+    >>> _check_positive_int(None, 'print_max', allow_none=True)
+    >>> _check_positive_int(None, 'fetch_max')
+    Traceback (most recent call last):
+        ...
+    TypeError: fetch_max must be an integer, not NoneType
+    >>> _check_positive_int(True, 'fetch_max')
+    Traceback (most recent call last):
+        ...
+    TypeError: fetch_max must be an integer, not bool
+    >>> _check_positive_int(2.0, 'print_max', allow_none=True)
     Traceback (most recent call last):
         ...
     TypeError: print_max must be an integer or None, not float
-    >>> _print_experiment_table(experiments, print_max=-1)
+    >>> _check_positive_int(0, 'fetch_max')
     Traceback (most recent call last):
         ...
-    ValueError: print_max must be None or an integer larger than zero
-    >>> _print_experiment_table(experiments, print_max='10')
-    Traceback (most recent call last):
-        ...
-    TypeError: print_max must be an integer or None, not str
-    >>> _print_experiment_table(experiments, print_max=0)
-    Traceback (most recent call last):
-        ...
-    ValueError: print_max must be None or an integer larger than zero
+    ValueError: fetch_max must be larger than zero, not 0
     """
-    _print("", _experiment_table(experiments, print_max), "")
+    if value is None and allow_none:
+        return
+    if not isinstance(value, numbers.Integral) or isinstance(value, bool):
+        expected = "an integer or None" if allow_none else "an integer"
+        raise TypeError(f"{name} must be {expected}, not {type(value).__name__}")
+    if value <= 0:
+        raise ValueError(f"{name} must be larger than zero, not {value}")
 
 
-def _queue_table(experiments, chamber_id, print_max=None):
+def _check_refresh_rate(refresh_rate):
     """
-    Return a renderable with the queue of a chamber: a title, a table
-    with the experiment currently being executed (if any) followed by
-    the queued experiments, and notes on how many experiments are
-    shown and the timezone of the dates.
+    Check the refresh rate of Lab.monitor: a finite number of seconds,
+    at least _MIN_REFRESH_RATE.
 
-    Parameters
-    ----------
-    experiments : list of dict
-        List of dictionaries containing experiment information. Each dictionary
-        should have keys: 'status', 'tag', 'experiment_id', 'user_id',
-        'submitted_on' and 'position', where position 0 denotes the
-        experiment currently being executed. Running experiments can
-        also have the keys 'current_instruction' and
-        'total_instructions' to display their progress.
-    chamber_id : str
-        The unique identifier of the chamber, shown in the title.
-    print_max : int or None, optional
-        Maximum number of queued experiments to print; the experiment
-        currently being executed is always printed. If None, all
-        experiments are printed. Default is None.
-
-    Returns
-    -------
-    rich renderable
-
-    Raises
-    ------
-    TypeError
-        If print_max is not an integer or None.
-    ValueError
-        If print_max is less than or equal to zero.
-    """
-    _check_print_max(print_max)
-    title = Text(f"Active and queued experiments for chamber '{chamber_id}'. Position 1 is the next to run.")
-    # Separate the active experiment (position=0) from the queue (position>0)
-    active = next((e for e in experiments if e.get('position') == 0), None)
-    queued = [e for e in experiments if e.get('position') != 0]
-    n = len(queued) if print_max is None else min(print_max, len(queued))
-
-    def add_row(experiment):
-        status = experiment.get('status')
-        if status == 'SUBMITTING':
-            position = '>>'
-        elif status in ('RUNNING', 'STOPPING'):
-            position = _fmt_progress(experiment)
-        else:
-            position = experiment.get('position')
-        submitted_on = experiment.get('submitted_on', None)
-        table.add_row(position,
-                      _fmt_status(status),
-                      experiment.get('tag'),
-                      experiment.get('experiment_id'),
-                      _truncate(experiment.get('user_id')),
-                      _NA if submitted_on is None else _fmt_timestamp(submitted_on))
-
-    table = _Table(["", "Status", "Tag", "Experiment ID", "Submitted By", "Submitted On"], right_justified=[0])
-    if active is not None:
-        table.add_label("--- Active experiment ---")
-        add_row(active)
-        table.add_label("")
-    if n > 0:
-        table.add_label("--- Queued experiments ---")
-    for experiment in queued[0:n]:
-        add_row(experiment)
-    if n < len(queued):
-        table.add_label("")
-        table.add_label(f"--- showing {n} / {len(queued)} queued experiments ---")
-    if n == 0:
-        table.add_label("--- There are no experiments in the queue ---")
-    return Group(title, "", table, _datetime_note())
-
-
-def _print_queue_table(experiments, chamber_id, print_max=None):
-    """
-    Print a formatted table with the queue of a chamber.
-
-    Parameters
-    ----------
-    experiments : list of dict
-        List of dictionaries containing experiment information (see
-        _queue_table).
-    chamber_id : str
-        The unique identifier of the chamber, shown in the title.
-    print_max : int or None, optional
-        Maximum number of queued experiments to print; the experiment
-        currently being executed is always printed. If None, all
-        experiments are printed. Default is None.
-
-    Raises
-    ------
-    TypeError
-        If print_max is not an integer or None.
-    ValueError
-        If print_max is less than or equal to zero.
-    
     Examples
     --------
-    >>> _print_queue_table([], 'ch-abcd-xyzw', print_max=10) # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
-    <BLANKLINE>
-         Status   Tag   Experiment ID   Submitted By   Submitted On
-    ─────────────────────────────────────────────────────────────────
-      --- There are no experiments in the queue ---
-    ─────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
-    >>> experiments = [
-    ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
-    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890, 'user_id': 'test@test', 'position': 1}
-    ... ]
-    >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10) # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
-    <BLANKLINE>
-          Status   Tag     Experiment ID   Submitted By   Submitted On
-    ──────────────────────────────────────────────────────────────────────────────────────
-      --- Queued experiments ---
-      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET
-    ──────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
-    >>> experiments_with_active = [
-    ...     {'status': 'RUNNING', 'tag': 'active1', 'experiment_id': 'exp_00',
-    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
-    ...      'user_id': 'test@test', 'position': 0, 'current_instruction': 50, 'total_instructions': 200},
-    ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
-    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
-    ...      'user_id': 'test@test', 'position': 1}
-    ... ]
-    >>> _print_queue_table(experiments_with_active, 'ch-abcd-xyzw', print_max=10) # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
-    <BLANKLINE>
-             Status    Tag       Experiment ID   Submitted By   Submitted On
-    ────────────────────────────────────────────────────────────────────────────────────────────
-      --- Active experiment ---
-      25 %   RUNNING   active1   exp_00          test@test      Sat, Feb 14, 2009 00:31:30 CET
-    <BLANKLINE>
-      --- Queued experiments ---
-         1   QUEUED    test1     exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET
-    ────────────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
-    >>> many_experiments = [
-    ...     {'status': 'QUEUED', 'tag': 'test1', 'experiment_id': 'exp_01',
-    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
-    ...      'user_id': 'test@test', 'position': 1},
-    ...     {'status': 'QUEUED', 'tag': 'test2', 'experiment_id': 'exp_02',
-    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
-    ...      'user_id': 'test@test', 'position': 2},
-    ...     {'status': 'QUEUED', 'tag': 'test3', 'experiment_id': 'exp_03',
-    ...      'chamber_id': 'ch-abcd-xyzw', 'config': 'config_A', 'submitted_on': 1234567890,
-    ...      'user_id': 'test@test', 'position': 3}
-    ... ]
-    >>> _print_queue_table(many_experiments, 'ch-abcd-xyzw', print_max=2) # doctest: +NORMALIZE_WHITESPACE
-    <BLANKLINE>
-    Active and queued experiments for chamber 'ch-abcd-xyzw'. Position 1 is the next to run.
-    <BLANKLINE>
-          Status   Tag     Experiment ID   Submitted By   Submitted On
-    ──────────────────────────────────────────────────────────────────────────────────────
-      --- Queued experiments ---
-      1   QUEUED   test1   exp_01          test@test      Sat, Feb 14, 2009 00:31:30 CET
-      2   QUEUED   test2   exp_02          test@test      Sat, Feb 14, 2009 00:31:30 CET
-    <BLANKLINE>
-      --- showing 2 / 3 queued experiments ---
-    ──────────────────────────────────────────────────────────────────────────────────────
-     Date/time in your machine's local timezone — current time = ...
-    <BLANKLINE>
-
-    >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=10.5)
+    >>> _check_refresh_rate(5)
+    >>> _check_refresh_rate(7.5)
+    >>> _check_refresh_rate(1)
     Traceback (most recent call last):
         ...
-    TypeError: print_max must be an integer or None, not float
-    >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=-1)
+    ValueError: refresh_rate must be at least 5 seconds, not 1
+    >>> _check_refresh_rate(float('nan'))
     Traceback (most recent call last):
         ...
-    ValueError: print_max must be None or an integer larger than zero
-    >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max='10')
+    ValueError: refresh_rate must be at least 5 seconds, not nan
+    >>> _check_refresh_rate('10')
     Traceback (most recent call last):
         ...
-    TypeError: print_max must be an integer or None, not str
-    >>> _print_queue_table(experiments, 'ch-abcd-xyzw', print_max=0)
-    Traceback (most recent call last):
-        ...
-    ValueError: print_max must be None or an integer larger than zero
+    TypeError: refresh_rate must be a number, not str
     """
-    _print("", _queue_table(experiments, chamber_id, print_max), "")
+    if not isinstance(refresh_rate, numbers.Real) or isinstance(refresh_rate, bool):
+        raise TypeError(f"refresh_rate must be a number, not {type(refresh_rate).__name__}")
+    if not (math.isfinite(refresh_rate) and refresh_rate >= _MIN_REFRESH_RATE):
+        raise ValueError(f"refresh_rate must be at least {_MIN_REFRESH_RATE} seconds, not {refresh_rate}")
 
 
 # ----------------------------------------------------------------------

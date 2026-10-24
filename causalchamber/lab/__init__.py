@@ -21,4 +21,4 @@
 # SOFTWARE.
 
 from .chamber import Chamber
-from .lab import Lab, login
+from .lab import Lab, Session, login
