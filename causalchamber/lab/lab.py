@@ -46,7 +46,7 @@ from causalchamber.lab.chamber import Batch
 from causalchamber.lab.api import API
 from causalchamber.lab.exceptions import LabError, UserError
 from causalchamber import _is_interactive, _PROMPT, _CODE_STYLE
-from causalchamber.lab.dashboard import print_dashboard
+from causalchamber.lab.rendering import print_dashboard
 
 # --------------------------------------------------------------------
 # Login
@@ -89,7 +89,7 @@ Please provide your credentials in one of the following ways.
 """
 
 
-def login(credentials=None, credentials_file=None, endpoint="https://api.causalchamber.ai/v0", verbose=True):
+def login(credentials=None, credentials_file=None, endpoint="https://api.causalchamber.ai/v1", verbose=True):
     """Log in to the Remote Lab, returning a lab.Lab object to interact with it.
 
     The credentials are taken, in order of precedence, from the
@@ -115,7 +115,7 @@ def login(credentials=None, credentials_file=None, endpoint="https://api.causalc
         password = <YOUR PASSWORD>
         ```
     endpoint : str, optional
-        Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
+        Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v1".
     verbose : bool, optional
         If True (default), this will print your user info (including
         your credits), your active real-time sessions and (up to 10
@@ -223,7 +223,7 @@ class Lab():
       - open a real-time connection to a chamber
     """
 
-    def __init__(self, credentials_file=None, endpoint="https://api.causalchamber.ai/v0", verbose=True, credentials=None):
+    def __init__(self, credentials_file=None, endpoint="https://api.causalchamber.ai/v1", verbose=True, credentials=None):
         """Initialize the Lab interface.
         
         Parameters
@@ -239,7 +239,7 @@ class Lab():
             Either credentials or credentials_file must be
             provided. If both are, credentials is used.
         endpoint : str, optional
-            Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
+            Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v1".
         verbose : bool, optional
             If True (default), this will print your user info
             (including your credits), your active real-time sessions

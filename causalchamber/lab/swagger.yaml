@@ -6,9 +6,11 @@
 openapi: 3.0.0
 info:
   title: Scheduler API
-  version: 0.0.1
+  version: 1.0.0
   description: |
-    Client-facing API for the Causal Chamber Scheduler (scheduler/main.py).
+    Client-facing API for the Causal Chamber Scheduler, version 1
+    (scheduler/api/v1/). The v0 API (scheduler/api/docs/swagger.yaml) is frozen,
+    and kept for the clients that still use it; see "Changes from v0" below.
 
     This specification documents the behaviour of the server as implemented,
     including its edge cases, so that it can be used to build API tests.
@@ -28,29 +30,58 @@ info:
     chamber, gets an extra field `scheduler_id`: a fresh UUID identifying
     the request on the scheduler (also in its logs). Responses that are not
     JSON (the HTML errors produced by the web framework, the data returned by
-    `POST /v0/sessions/{session_id}/instructions`) don't.
+    `POST /v1/sessions/{session_id}/instructions`) don't.
+
+    **Names.**
+      - Times are Unix timestamps in UTC: seconds since 1970-01-01 00:00:00
+        UTC, with millisecond precision, named `*_on` (e.g. `submitted_on`,
+        `started_on`, `expires_on`, `available_on`). They don't depend on the
+        time zone of the server or the client; convert them to local time
+        if needed.
+      - Durations are in seconds, named `*_seconds` (`duration_seconds`,
+        `est_runtime_seconds`, `unused_seconds`, `remaining_seconds`).
+      - A chamber's attributes are always prefixed with `chamber_`
+        (`chamber_id`, `chamber_config`, `chamber_model`, `chamber_state`,
+        `chamber_status`), also in the objects of other resources.
+      - A single object is always wrapped in a field named after it
+        (`{"experiment": {...}}`, `{"session": {...}}`, `{"chamber": {...}}`),
+        a list in its plural (`{"experiments": [...]}`).
+      - Each resource has one object, the same in every response that shows
+        it (see the schemas `Experiment`, `Session`, `Chamber`, `Wallet`,
+        `Transaction`).
+
+    **Chamber modes.** A chamber is in `queue` mode (it runs experiments
+    submitted to its queue, `POST /v1/experiments`), `interactive` mode (it
+    runs the instructions of interactive sessions, `POST /v1/sessions`), or
+    has no mode (`null`: neither).
 
     **Relayed chamber responses.** Some endpoints forward a request to a
     chamber and relay its response (status code, headers and body) as is.
     The chamber adds its own request identifier, `request_id`, to its JSON
     responses, so these also carry `request_id` next to `scheduler_id`.
 
-    **Error bodies.** Errors produced by the scheduler are JSON objects with a
-    human-readable `message` (see the `Error` schema), except:
-      - `415 Unsupported Media Type` (HTML), for a `POST` whose body is not
+    **Error bodies.** Errors are JSON objects (see the `Error` schema) with
+    a human-readable `message` and, for some, extra fields (e.g.
+    `remaining_seconds`), listed with them. The errors relayed from a
+    chamber are its own (with its `request_id`; see `RelayedError`). Two
+    are not JSON:
+      - `415 Unsupported Media Type` (HTML), for a request with a body not
         sent as JSON (no `Content-Type: application/json`, or no body); see
         the `UnsupportedMediaType` response.
-      - `400 Bad Request` (HTML), for a `POST` with `Content-Type:
+      - `400 Bad Request` (HTML), for a request with `Content-Type:
         application/json` whose body is not valid JSON; see the
         `MalformedJSON` response.
 
-    **Request bodies.** The `POST` endpoints that take a body expect a JSON
-    object. An empty object (`{}`), or `null`, `false`, `0`, `""` or `[]`,
-    gets `400` with the message `"Please provide a JSON body"`; any other
-    value that is not an object (e.g. `["a"]`, `"a"`, `1`) gets `400` with
-    the message `"The JSON body must be an object"`. Fields are checked in
-    the order listed for each endpoint: the first missing one is reported
-    (`"Missing field '<field>'"`), then the first of the wrong type (e.g.
+    **Request bodies.** The endpoints that take a body expect a JSON object.
+    An empty object (`{}`), or `null`, `false`, `0`, `""` or `[]`, gets
+    `400` with the message `"Please provide a JSON body"`; any
+    other value that is not an object (e.g. `["a"]`, `"a"`, `1`) gets `400`
+    with the message `"The JSON body must be an object"`. The endpoints
+    that take no body (e.g. `POST /v1/sessions/{session_id}/stop` and
+    `POST /v1/wallet/{wallet_id}/topup`) ignore one, whatever it is, and
+    need no `Content-Type`. Fields are checked in the order listed for
+    each endpoint: the first missing one is reported (`400`,
+    `"Missing field '<field>'"`), then the first invalid one (`400`, e.g.
     `"Invalid field 'chamber_id': it must be a string"`). Fields not listed
     are ignored.
 
@@ -58,15 +89,27 @@ info:
     (`a-z`, `A-Z`), digits (`0-9`), and the symbols underscore (`_`), plus
     (`+`), colon (`:`) and hyphen (`-`); an `experiment_id` must have at least
     one character, a `tag` may be empty. No maximum length is enforced.
-    Experiment ids generated by the scheduler are UUIDs (version 4).
+    Experiment and session ids generated by the scheduler are UUIDs
+    (version 4).
 
-    **Not found vs. forbidden.** To avoid disclosing which ids exist, a
-    chamber or experiment that does not exist and one that the user may not
-    access get the same response (`403` for chambers and experiments, `404`
-    for sessions).
+    **Not found vs. forbidden.** To avoid disclosing which ids exist:
+      - An id in the path that the user can't access (it does not exist, it
+        is another user's experiment or session, or a chamber the user may
+        not use) gets `404` with the message `"The requested URL does not
+        exist."`, as an unknown URL does. The exception is `PUT
+        /v1/chambers/{chamber_id}/mode` by a user of the chamber without the
+        permission to change its mode: `403`.
+      - A chamber named in the body (`POST /v1/experiments`, `POST
+        /v1/sessions`) that does not exist or that the user may not use gets
+        `403`.
+
+    **Other users' data.** A chamber's queue, and its active session, can
+    be another user's. Their `user_id` and `tag` are `null`, unless the user
+    may see others in the chamber's queue (a permission given per chamber
+    and user); a `session_id` is always shown.
 
     **Trailing slashes.** Every path is also served with a trailing slash
-    (e.g. `/v0/wallet/`), with the same behaviour.
+    (e.g. `/v1/wallet/`), with the same behaviour.
 
     **Internal errors.** Any unexpected error gets `500` with the generic
     message of the `InternalError` response.
@@ -92,18 +135,20 @@ info:
 
     ## Credits
 
-    Experiments are paid from the user's wallet (see `GET /v0/wallet`), in
-    credits: 1 credit = 1 second of chamber time. When an experiment is
-    submitted, its cost is estimated from its instructions (the 90th
-    percentile of its estimated duration, plus 60 seconds of overhead,
-    rounded up to whole seconds) and charged at once. An experiment whose
-    cost would take the wallet's balance below its `credit_floor` is refused
+    Experiments and interactive sessions are paid from the user's wallet
+    (see `GET /v1/wallet`), in credits: 1 credit = 1 second of chamber time.
+
+    When an experiment is submitted, its cost is estimated from its
+    instructions (the 90th percentile of its estimated duration, plus 60
+    seconds of overhead, rounded up to whole seconds: its
+    `est_runtime_seconds`) and charged at once. An experiment whose cost
+    would take the wallet's balance below its `credit_floor` is refused
     (`402`), and nothing is charged.
 
     When the experiment ends, the charge is reconciled with its actual
     cost: the time it occupied the chamber, from its (last) submission to
-    the chamber until it ended, rounded up to whole seconds. What was
-    charged above the actual cost is refunded to the wallet at once:
+    the chamber (`started_on`) until it ended, rounded up to whole seconds.
+    What was charged above the actual cost is refunded to the wallet at once:
       - `FAILED`: the whole charge is refunded.
       - `CANCELED` while `QUEUED`: the whole charge is refunded.
       - `CANCELED` while running: the charge minus the time until it was
@@ -114,18 +159,54 @@ info:
     few seconds), and includes the time the chamber takes to upload the
     results of a `DONE` experiment.
 
-    A real-time session lasts a fixed duration, chosen when it is started
-    (`POST /v0/sessions`, 30 days if none is given), and its whole duration
-    is charged at once: 1 credit per second. It includes the time the
-    chamber takes to reset for the session. A session whose cost would
-    take the wallet's balance below its `credit_floor` is refused (`402`),
-    and nothing is charged. If it ends before its duration is over, its
-    unused whole seconds are refunded at once:
-      - stopped (`POST /v0/sessions/{session_id}/stop`), replaced by another
+    An interactive session lasts a fixed duration, chosen when it is started
+    (`duration_seconds` in `POST /v1/sessions`, 30 days if none is given),
+    and its whole duration is charged at once: 1 credit per second. It
+    includes the time the chamber takes to reset for the session. A session
+    whose cost would take the wallet's balance below its `credit_floor` is
+    refused (`402`), and nothing is charged. If it ends before its duration
+    is over, its unused whole seconds are refunded at once:
+      - stopped (`POST /v1/sessions/{session_id}/stop`), replaced by another
         session on the chamber, or ended by the chamber: the seconds left
         until it would have expired, rounded down;
       - the chamber could not be reset for it: the whole charge.
     A session that runs its whole duration is refunded nothing.
+
+    ## Changes from v0
+
+      - Every path is under `/v1`. The v0 paths are unchanged.
+      - Only in v1: GET /v1/account, GET /v1/wallet, GET /v1/transactions,
+        PUT /v1/chambers/{chamber_id}/mode, POST
+        /v1/sessions/{session_id}/stop (no longer in v0), and the new GET
+        /v1/chambers/{chamber_id}.
+      - The interactive mode is called `interactive` (v0: `real-time`),
+        also in the messages.
+      - `config` is `chamber_config` everywhere; a chamber's model and
+        state are `chamber_model` and `chamber_state`, and
+        `chamber_state` is `unavailable` for a chamber without a mode.
+      - The duration of a session is `duration_seconds`, in the request and
+        in the responses (v0: `duration`); the unused time of a stopped
+        session is `unused_seconds` (v0: `unused_duration`); the time left
+        until a busy chamber's session ends is `remaining_seconds` (v0:
+        `seconds_left`).
+      - One object per resource: an `Experiment` has `started_on` and
+        `est_runtime_seconds` in every response (v0: neither),
+        a `Session` has `user_id`, `started_on` and `duration_seconds`.
+      - Single objects are wrapped: `GET` and `POST .../cancel` of an
+        experiment return `{"experiment": {...}}` (v0: the bare object);
+        `POST /v1/experiments` returns the created experiment (v0: only its
+        id); `PUT .../mode` returns the chamber; `POST .../stop` returns the
+        session, with `refund` and `unused_seconds`.
+      - `POST /v1/sessions` returns `{"session": {...}}`: the chamber's
+        answer, with its `status` named `chamber_status`, and the session's
+        fields (v0: the chamber's answer with `duration` and `expires_on`).
+      - `GET /v1/chambers` reads only the scheduler's database: it does not
+        contact the chambers (v0 asks each, for their status and software
+        version), and returns the same chambers as the account.
+      - New: `GET /v1/chambers/{chamber_id}`, with the chamber's
+        configurations, queue and active session.
+      - An id in the path that the user can't access gets `404` for every
+        resource (v0: `403` for experiments and chambers).
 
 servers:
   - url: https://api.causalchamber.ai
@@ -148,11 +229,41 @@ components:
       required: true
       description: >
         Id of the experiment (see Identifiers). An id with other characters
-        gets 400; a valid id that does not exist, or belongs to another user,
-        gets 403.
+        gets 400; a valid id that does not exist, or
+        belongs to another user, gets 404.
       schema:
         type: string
       example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+    ChamberId:
+      name: chamber_id
+      in: path
+      required: true
+      description: >
+        Id of the chamber. A chamber that does not exist, or that the user
+        may not use, gets 404.
+      schema:
+        type: string
+      example: "tt-test-virt"
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      description: >
+        Id of the session, as returned by POST /v1/sessions. A session that
+        does not exist, or belongs to another user, gets 404.
+      schema:
+        type: string
+      example: "a778b917-7a05-4b6c-bca7-58805cc1e971"
+    WalletId:
+      name: wallet_id
+      in: path
+      required: true
+      description: >
+        Id of the wallet, as returned by GET /v1/wallet. Any other wallet
+        than the user's (whether it exists or not) gets 404.
+      schema:
+        type: string
+      example: "wallet_8f14e45f"
 
   headers:
     WWW-Authenticate:
@@ -176,6 +287,9 @@ components:
 
     Error:
       type: object
+      description: >
+        An error: its message, and for some, extra fields, listed with them
+        (e.g. remaining_seconds; see Error bodies)
       properties:
         message:
           type: string
@@ -230,9 +344,26 @@ components:
         wallet:
           allOf:
             - $ref: '#/components/schemas/Wallet'
+          description: The wallet the user's experiments and sessions are paid from, as in GET /v1/wallet
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
           description: >
-            The wallet the user's experiments are paid from, as returned by
-            GET /v0/wallet.
+            The user's active interactive sessions, newest first: those not
+            stopped or replaced, and whose time is not up.
+        experiments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Experiment'
+          description: >
+            The user's active experiments (QUEUED, SUBMITTING, RUNNING or
+            STOPPING), newest first.
+        chambers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Chamber'
+          description: The chambers the user may use, as in GET /v1/chambers
       required:
         - user_id
         - email
@@ -241,6 +372,9 @@ components:
         - requested_academic
         - is_academic
         - wallet
+        - sessions
+        - experiments
+        - chambers
 
     Wallet:
       type: object
@@ -263,14 +397,30 @@ components:
           format: int64
           nullable: true
           description: >
-            Lowest balance allowed: an experiment whose cost would take the
-            balance below it is refused (402). It may be negative (credit).
-            Null if there is no limit.
+            Lowest balance allowed: an experiment or session whose cost would
+            take the balance below it is refused (402). It may be negative
+            (credit). Null if there is no limit.
           example: 0
       required:
         - wallet_id
         - credits
         - credit_floor
+
+    PaymentLinks:
+      type: object
+      description: >
+        The ways to top up a wallet (POST /v1/wallet/{wallet_id}/topup):
+        payment links, or instructions, by name. Always contains invoice;
+        more may be added.
+      properties:
+        invoice:
+          type: string
+          description: How to pay by invoice or through a purchase order
+          example: "To pay via invoice or through a purchase order from your institution, please write us at support@causalchamber.ai"
+      additionalProperties:
+        type: string
+      required:
+        - invoice
 
     Transaction:
       type: object
@@ -285,9 +435,9 @@ components:
           description: >
             charge (an experiment or session was charged its estimated
             cost), reconciliation (the unused part of a charge was refunded,
-            once the experiment ended; amount 0 if nothing was), topup
-            (credits bought), grant (credits given) or adjustment (a manual
-            correction by staff).
+            once the experiment or session ended), topup (credits bought),
+            grant (credits given) or adjustment (a manual correction by
+            staff).
           enum: [charge, reconciliation, topup, grant, adjustment]
         amount:
           type: integer
@@ -306,20 +456,20 @@ components:
         session_id:
           type: string
           nullable: true
-          description: For a charge or reconciliation, the real-time session it is for; null otherwise
+          description: For a charge or reconciliation, the interactive session it is for; null otherwise
         note:
           type: string
           nullable: true
           description: >
-            Free-text note for the user. A charge's gives the experiment's
-            estimated runtime ("Charge for experiment f47ac10b-..., with an
-            estimated runtime of 1m 40s (1 second = 1 credit)."); a
-            reconciliation's, the refund and why ("Refund of 40 credits for
-            experiment f47ac10b-...: it ran for 1m 0s, less than the
-            estimated 1m 40s.")
+            Free-text note for the user. A charge's gives the estimated
+            runtime or the session's duration ("Charge for experiment
+            f47ac10b-..., with an estimated runtime of 1m 40s (1 second = 1
+            credit)."); a reconciliation's, the refund and why ("Refund of 40
+            credits for experiment f47ac10b-...: it ran for 1m 0s, less than
+            the estimated 1m 40s.")
         created_on:
           type: number
-          description: Unix timestamp (seconds, with millisecond precision) when the transaction was recorded
+          description: When the transaction was recorded
           example: 1709856000.123
       required:
         - transaction_id
@@ -331,66 +481,9 @@ components:
         - note
         - created_on
 
-    Chamber:
-      type: object
-      description: >
-        A chamber the user may use. If the chamber answered, every field is
-        present. If it did not (status ERROR after a 500 or 503, or
-        OFFLINE), only chamber_id, status and mode are.
-      properties:
-        chamber_id:
-          type: string
-          description: Unique identifier of the chamber
-          example: "lt-test-b0ni"
-        chamber_model:
-          type: string
-          description: Model of the chamber
-          example: "Light Tunnel Mk2"
-        chamber_config:
-          type: string
-          nullable: true
-          description: Configuration currently loaded on the chamber
-          example: "standard"
-        config_version:
-          type: string
-          description: Version of the current configuration
-          example: "1.0"
-        valid_configs:
-          type: array
-          items:
-            type: string
-          description: The configurations the chamber can load
-          example: ["standard", "camera_fast"]
-        status:
-          type: string
-          description: >
-            Status of the chamber: READY, LOADING (loading a configuration),
-            EXECUTING (executing instructions), ERROR (the chamber reports an
-            error, or answered with 500 or 503), or OFFLINE (the chamber
-            could not be reached, did not answer within 0.5 seconds, or
-            answered with a body that is not JSON).
-          enum: [READY, LOADING, EXECUTING, ERROR, OFFLINE]
-          example: "READY"
-        mode:
-          type: string
-          nullable: true
-          description: >
-            Operating mode of the chamber: queue (accepts experiments, POST
-            /v0/experiments), real-time (accepts sessions, POST /v0/sessions),
-            or null (neither).
-          enum: [queue, real-time]
-          example: "queue"
-        codebase_version:
-          type: string
-          description: Version (commit) of the software running on the chamber
-          example: "3f2a9c1"
-      required:
-        - chamber_id
-        - status
-        - mode
-
     Experiment:
       type: object
+      description: An experiment (the same object in every response that shows one)
       properties:
         experiment_id:
           type: string
@@ -399,8 +492,8 @@ components:
         chamber_id:
           type: string
           description: Chamber that runs (or ran) the experiment
-          example: "lt-test-b0ni"
-        config:
+          example: "tt-test-virt"
+        chamber_config:
           type: string
           description: Chamber configuration for this experiment
           example: "standard"
@@ -408,7 +501,7 @@ components:
           type: string
           description: Status of the experiment (see Experiment lifecycle)
           enum: [QUEUED, SUBMITTING, RUNNING, STOPPING, DONE, FAILED, CANCELED]
-          example: "QUEUED"
+          example: "RUNNING"
         user_id:
           type: string
           description: User who submitted the experiment
@@ -419,17 +512,24 @@ components:
           example: "test_run_1"
         submitted_on:
           type: number
-          description: Unix timestamp (seconds, with millisecond precision) when the experiment was submitted
+          description: When the user submitted the experiment
           example: 1709856000.123
-        download_url:
-          type: string
-          format: uri
+        started_on:
+          type: number
           nullable: true
-          description: URL to download the results; set once the experiment is DONE, null before
-        checksum:
-          type: string
-          nullable: true
-          description: Checksum of the results file; set once the experiment is DONE, null before
+          description: >
+            When the experiment was (last) submitted to the chamber, i.e. when
+            it started to occupy it; null while it is QUEUED (also again if a
+            submission was rolled back), and for an experiment canceled
+            while QUEUED
+          example: 1709856100.456
+        est_runtime_seconds:
+          type: number
+          description: >
+            Its estimated runtime, in seconds, including the overhead of
+            submitting it and uploading its results: what it is charged for
+            (see Credits)
+          example: 1860.0
         total_instructions:
           type: integer
           description: Number of instructions (MSR, SET and WAIT) in the experiment's protocol
@@ -442,32 +542,79 @@ components:
             the experiment is submitted to the chamber (0 when it starts). It
             never decreases.
           example: 498
+        download_url:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to download the results; set once the experiment is DONE, null before
+        checksum:
+          type: string
+          nullable: true
+          description: Checksum of the results file; set once the experiment is DONE, null before
       required:
         - experiment_id
         - chamber_id
-        - config
+        - chamber_config
         - status
         - user_id
         - tag
         - submitted_on
-        - download_url
-        - checksum
+        - started_on
+        - est_runtime_seconds
         - total_instructions
         - current_instruction
+        - download_url
+        - checksum
+
+    Quote:
+      type: object
+      description: >
+        The cost of an experiment, without submitting it (POST
+        /v1/experiments/quote).
+      properties:
+        chamber_id:
+          type: string
+          description: The chamber the experiment would run on
+          example: "tt-test-virt"
+        chamber_config:
+          type: string
+          description: The configuration it would run with
+          example: "standard"
+        credits_max:
+          type: integer
+          description: >
+            What POST /v1/experiments would charge upfront for this
+            experiment, in credits (1 credit = 1 second of
+            est_runtime_seconds, rounded up). It is the most the experiment
+            can cost: when it ends, the unused part is refunded, and a
+            longer run is not charged more (see Credits).
+        est_runtime_seconds:
+          type: number
+          description: >
+            The estimated duration the charge is based on, in seconds: as
+            the experiment's est_runtime_seconds once submitted.
+      required:
+        - chamber_id
+        - chamber_config
+        - credits_max
+        - est_runtime_seconds
 
     QueueExperiment:
       type: object
-      description: An experiment in a chamber's queue (of any user)
+      description: >
+        An experiment in a chamber's queue, of any user: an Experiment, with
+        its position. Other users' user_id and tag are null, unless the user
+        may see others in the chamber's queue (see Other users' data).
       properties:
         experiment_id:
           type: string
-          description: Unique identifier of the experiment
+          example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
         chamber_id:
           type: string
-          description: Chamber of the queue
-        config:
+          example: "tt-test-virt"
+        chamber_config:
           type: string
-          description: Chamber configuration for this experiment
+          example: "standard"
         status:
           type: string
           description: >
@@ -479,17 +626,13 @@ components:
         user_id:
           type: string
           nullable: true
-          description: >
-            User who submitted the experiment. Null for other users'
-            experiments, unless the requesting user may see others in
-            the chamber's queue.
+          description: User who submitted the experiment; null if hidden
+          example: "user123"
         tag:
           type: string
           nullable: true
-          description: >
-            User-defined tag (an empty string if none was given). Null
-            for other users' experiments, unless the requesting user may
-            see others in the chamber's queue.
+          description: User-defined tag (an empty string if none was given); null if hidden
+          example: "test_run_1"
         position:
           type: integer
           minimum: 0
@@ -499,25 +642,45 @@ components:
           example: 1
         submitted_on:
           type: number
-          description: Unix timestamp (seconds, with millisecond precision) when the experiment was submitted
+          example: 1709856000.123
+        started_on:
+          type: number
+          nullable: true
+          example: null
+        est_runtime_seconds:
+          type: number
+          example: 1860.0
         total_instructions:
           type: integer
-          description: Number of instructions in the experiment's protocol
+          example: 1000
         current_instruction:
           type: integer
           nullable: true
-          description: How many instructions the chamber has executed so far (null for queued experiments)
+          example: null
+        download_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Always null in a queue (set once an experiment is DONE)
+        checksum:
+          type: string
+          nullable: true
+          description: Always null in a queue
       required:
         - experiment_id
         - chamber_id
-        - config
+        - chamber_config
         - status
         - user_id
         - tag
         - position
         - submitted_on
+        - started_on
+        - est_runtime_seconds
         - total_instructions
         - current_instruction
+        - download_url
+        - checksum
 
     QueueParameters:
       type: object
@@ -545,62 +708,225 @@ components:
         - max_instructions
         - max_wait
 
-    ChamberSession:
+    Session:
       type: object
-      description: >
-        The chamber's answer to loading the configuration for a new session,
-        relayed, with the session's duration and expiration time added.
+      description: An interactive session (the same object in every response that shows one)
       properties:
         session_id:
           type: string
           format: uuid
-          description: Unique identifier of the new session, to use with POST /v0/sessions/{session_id}/instructions
+          description: Unique identifier of the session, to use with POST /v1/sessions/{session_id}/instructions
+          example: "a778b917-7a05-4b6c-bca7-58805cc1e971"
         chamber_id:
           type: string
-        chamber_model:
-          type: string
-        status:
-          type: string
-          description: Status of the chamber (READY once the configuration is loaded)
-          example: "READY"
+          example: "tt-test-virt"
         chamber_config:
           type: string
-          description: The configuration loaded
-        config_version:
-          type: string
-        valid_configs:
-          type: array
-          items:
-            type: string
-        codebase_version:
-          type: string
-        documentation:
+          description: The configuration loaded for the session
+          example: "standard"
+        user_id:
           type: string
           nullable: true
-          description: Documentation of the configuration loaded (e.g. a link)
-        duration:
-          type: integer
-          description: How long the session lasts at most, in seconds (also the credits charged)
-          example: 3600
+          description: >
+            User who started the session; null in a chamber's details for
+            another user's session, unless the user may see others in the
+            chamber's queue (see Other users' data)
+          example: "user123"
+        started_on:
+          type: number
+          description: >
+            When the session was started (and charged): before the chamber
+            was reset for it, which is part of its duration
+          example: 1760000000.123
         expires_on:
           type: number
           description: >
-            When the session expires (its time is up), in seconds since the
-            epoch; its instructions are refused (422) from then on
-          example: 1760000000.123
-        request_id:
-          $ref: '#/components/schemas/ChamberRequestId'
-        scheduler_id:
-          $ref: '#/components/schemas/SchedulerId'
+            When the session expires (its time is up): started_on plus
+            duration_seconds. Its instructions are refused (422) from then on
+          example: 1760003600.123
+        duration_seconds:
+          type: integer
+          description: How long the session lasts at most, in seconds (also the credits charged)
+          example: 3600
       required:
         - session_id
         - chamber_id
-        - status
         - chamber_config
-        - duration
+        - user_id
+        - started_on
         - expires_on
-        - request_id
-        - scheduler_id
+        - duration_seconds
+
+    StartedSession:
+      description: >
+        The answer to starting a session: the chamber's answer to loading the
+        configuration (relayed, with its status named chamber_status, so it
+        says exactly which hardware configuration was loaded), merged with
+        the Session's fields (which take precedence for the fields both
+        have, e.g. chamber_id).
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          properties:
+            chamber_model:
+              type: string
+              description: Model of the chamber, as the chamber reports it
+              example: "Dummy Chamber Mk1"
+            chamber_status:
+              type: string
+              description: Status of the chamber, as it reports it (READY once the configuration is loaded)
+              example: "READY"
+            config_version:
+              type: string
+              description: Version of the configuration loaded
+              example: "1.0"
+            valid_configs:
+              type: array
+              items:
+                type: string
+              description: The configurations the chamber can load
+            codebase_version:
+              type: string
+              description: Version (commit) of the software running on the chamber
+              example: "3f2a9c1"
+            documentation:
+              type: string
+              nullable: true
+              description: Documentation of the configuration loaded (e.g. a link)
+            request_id:
+              $ref: '#/components/schemas/ChamberRequestId'
+          required:
+            - chamber_status
+            - request_id
+
+    StoppedSession:
+      description: A stopped session, with what was refunded
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          properties:
+            refund:
+              type: integer
+              description: The credits refunded (0 if it was stopped less than a second before it would have expired)
+              example: 3000
+            unused_seconds:
+              type: number
+              description: >
+                The session's unused time when it was stopped, in seconds:
+                from then until it would have expired. Its whole seconds are
+                what was refunded
+              example: 3000.512
+          required:
+            - refund
+            - unused_seconds
+
+    Chamber:
+      type: object
+      description: >
+        A chamber the user may use, and whether it is in use (by any user),
+        from the scheduler's database (the chamber itself is not contacted)
+      properties:
+        chamber_id:
+          type: string
+          example: "tt-test-virt"
+        chamber_model:
+          type: string
+          nullable: true
+          description: >
+            The chamber's model, from its id: "Light Tunnel Mk2" for an id
+            starting with "lt", "Wind Tunnel Mk2" for one starting with "wt",
+            "Dummy Chamber Mk1" for one starting with "tt"; null for any other
+            chamber
+          example: "Dummy Chamber Mk1"
+        mode:
+          type: string
+          nullable: true
+          description: Operating mode of the chamber (see Chamber modes)
+          enum: [queue, interactive]
+          example: "queue"
+        chamber_state:
+          type: string
+          enum: [busy, ready, unavailable]
+          description: >
+            unavailable if the chamber has no mode (it accepts neither
+            sessions nor experiments); busy if it has an active session, or
+            experiments queued or in flight (QUEUED, SUBMITTING, RUNNING or
+            STOPPING); ready otherwise
+          example: "busy"
+        available_on:
+          type: number
+          nullable: true
+          description: >
+            When a busy chamber is free at the latest; null if it is not busy.
+            In interactive mode, when its active session expires. In queue
+            mode, an estimate: the estimated end of the experiment in flight
+            (its started_on plus its est_runtime_seconds), or now if there is
+            none or it has run past its estimate, plus the
+            est_runtime_seconds of each queued experiment.
+          example: 1709859820.456
+      required:
+        - chamber_id
+        - chamber_model
+        - mode
+        - chamber_state
+        - available_on
+
+    ChamberDetails:
+      description: A chamber (see Chamber), with its configurations, queue and active session
+      allOf:
+        - $ref: '#/components/schemas/Chamber'
+        - type: object
+          properties:
+            configs:
+              type: array
+              items:
+                $ref: '#/components/schemas/Config'
+              description: The chamber's configurations, by chamber_config
+            queue:
+              type: array
+              nullable: true
+              items:
+                $ref: '#/components/schemas/QueueExperiment'
+              description: >
+                In queue mode, the chamber's experiments in flight and queued,
+                of any user, as in GET /v1/queues/{chamber_id}: the one in
+                flight first (position 0), then the queued ones, in order.
+                Null if the chamber is not in queue mode.
+            session:
+              allOf:
+                - $ref: '#/components/schemas/Session'
+              nullable: true
+              description: >
+                The chamber's active session, of any user (its user_id hidden
+                per Other users' data); null if it has none
+          required:
+            - configs
+            - queue
+            - session
+
+    Config:
+      type: object
+      description: A configuration of a chamber, as given in its configuration table
+      properties:
+        chamber_config:
+          type: string
+          description: The configuration's name, as used in chamber_config (e.g. POST /v1/sessions)
+          example: "standard"
+        config_version:
+          type: string
+          nullable: true
+          description: The version of its configuration table; null if the table has none
+          example: "1.0"
+        docs:
+          type: string
+          format: uri
+          nullable: true
+          description: A link to its documentation; null if the table has none
+          example: "http://box.causalchamber.ai/config_doc_tt_mk1_standard.pdf"
+      required:
+        - chamber_config
+        - config_version
+        - docs
 
   responses:
     Unauthorized:
@@ -619,7 +945,10 @@ components:
             scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
 
     NotFound:
-      description: Unknown URL (any path not listed here); credentials are not checked
+      description: >
+        Unknown URL (any path not listed here; credentials are not checked),
+        or an id in the path that the user can't access (see Not found vs.
+        forbidden)
       content:
         application/json:
           schema:
@@ -630,7 +959,7 @@ components:
 
     MethodNotAllowed:
       description: >
-        The path exists, but not with this method (e.g. DELETE /v0/wallet);
+        The path exists, but not with this method (e.g. DELETE /v1/wallet);
         credentials are not checked. No Allow header is sent.
       content:
         application/json:
@@ -671,21 +1000,83 @@ components:
             type: string
           example: "<!doctype html>\n<html lang=en>\n<title>400 Bad Request</title>\n<h1>Bad Request</h1>\n<p>The browser (or proxy) sent a request that this server could not understand.</p>\n"
 
-    ChamberOffline:
-      description: The chamber could not be reached
+    InvalidBody:
+      description: >
+        The body is not a non-empty JSON object, a field is missing or
+        invalid, see Request bodies; or a body that is not valid JSON (HTML,
+        see MalformedJSON)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            empty_body:
+              summary: Empty JSON object
+              value:
+                message: "Please provide a JSON body"
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+            not_an_object:
+              summary: Body not a JSON object
+              value:
+                message: "The JSON body must be an object"
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+            missing_field:
+              summary: Missing field
+              value:
+                message: "Missing field 'chamber_config'"
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+            wrong_type:
+              summary: Field of the wrong type
+              value:
+                message: "Invalid field 'chamber_id': it must be a string"
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        text/html:
+          schema:
+            type: string
+
+    InvalidExperimentId:
+      description: Invalid experiment_id (see Identifiers)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            message: "Chamber 'tt-test-virt' is currently offline. Please try again later. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels."
+            message: "Invalid experiment_id 'bad@id': It must be composed only of:\n  - Lowercase letters (a-z)\n  - Uppercase letters (A-Z)\n  - Numbers (0-9)\n  - Symbols: underscore (_), plus (+), colon (:), hyphen (-) "
             scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+
+    ChamberNotFound:
+      description: The chamber named in the body does not exist, or the user may not use it
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            message: "The provided chamber_id does not exist or you do not have permissions to access it"
+            scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+
+    InvalidLimit:
+      description: Invalid query parameter (not an integer between 1 and 100, or not true or false)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalid_limit:
+              summary: Invalid limit
+              value:
+                message: "Invalid parameter 'limit': it must be an integer between 1 and 100"
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+            invalid_active_only:
+              summary: Invalid active_only
+              value:
+                message: "Invalid parameter 'active_only': it must be true or false"
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
 
 paths:
   /health:
     get:
       summary: Health check
-      description: Returns 200 if the server is running. No authentication.
+      description: Returns 200 if the server is running. No authentication. Not versioned (shared with v0).
       security: []
       responses:
         '200':
@@ -704,10 +1095,14 @@ paths:
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
 
-  /v0/account:
+  /v1/account:
     get:
       summary: Get the authenticated user's account
-      description: Returns the account details of this user, including their wallet.
+      description: >
+        Returns the account details of this user, including their wallet,
+        their active interactive sessions and experiments, and the chambers
+        they may use, with whether they are in use. It only reads the
+        scheduler's database.
       responses:
         '200':
           description: The account
@@ -735,6 +1130,44 @@ paths:
                     wallet_id: "wallet_8f14e45f"
                     credits: 3600
                     credit_floor: 0
+                  sessions:
+                    - session_id: "a778b917-7a05-4b6c-bca7-58805cc1e971"
+                      chamber_id: "tt-test-virt"
+                      chamber_config: "standard"
+                      user_id: "user123"
+                      started_on: 1760000000.123
+                      expires_on: 1760003600.123
+                      duration_seconds: 3600
+                  experiments:
+                    - experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                      chamber_id: "lt-test-b0ni"
+                      chamber_config: "standard"
+                      status: "RUNNING"
+                      user_id: "user123"
+                      tag: "test_run_1"
+                      submitted_on: 1709856000.123
+                      started_on: 1709856100.456
+                      est_runtime_seconds: 1860.0
+                      total_instructions: 1000
+                      current_instruction: 498
+                      download_url: null
+                      checksum: null
+                  chambers:
+                    - chamber_id: "lt-test-b0ni"
+                      chamber_model: "Light Tunnel Mk2"
+                      mode: "queue"
+                      chamber_state: "busy"
+                      available_on: 1709857960.456
+                    - chamber_id: "tt-test-virt"
+                      chamber_model: "Dummy Chamber Mk1"
+                      mode: "interactive"
+                      chamber_state: "busy"
+                      available_on: 1760003600.123
+                    - chamber_id: "wt-test-0001"
+                      chamber_model: "Wind Tunnel Mk2"
+                      mode: null
+                      chamber_state: "unavailable"
+                      available_on: null
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -743,13 +1176,13 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /v0/wallet:
+  /v1/wallet:
     get:
       summary: Get the authenticated user's wallet
       description: >
-        Returns the wallet this user's experiments are paid from, with its
-        balance. A submitted experiment's charge shows at once (also those of
-        other users sharing the wallet).
+        Returns the wallet this user's experiments and sessions are paid
+        from, with its balance. A charge shows at once (also those of other
+        users sharing the wallet).
       responses:
         '200':
           description: The wallet
@@ -778,23 +1211,62 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /v0/transactions:
+  /v1/wallet/{wallet_id}/topup:
+    post:
+      summary: Get the ways to top up the user's wallet
+      description: |
+        Returns the ways to top up the user's wallet (the one GET /v1/wallet
+        returns, also if shared with other users), as payment links by
+        name. It always contains `invoice`, with instructions to pay by
+        invoice or purchase order. It is a POST because it will start a
+        payment; for now it changes nothing. A request body is ignored.
+
+        Checks: the wallet is the user's (404 otherwise, whether it exists
+        or not).
+      parameters:
+        - $ref: '#/components/parameters/WalletId'
+      responses:
+        '200':
+          description: The ways to top up the wallet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_links:
+                    $ref: '#/components/schemas/PaymentLinks'
+                  scheduler_id:
+                    $ref: '#/components/schemas/SchedulerId'
+                required:
+                  - payment_links
+                  - scheduler_id
+              example:
+                payment_links:
+                  invoice: "To pay via invoice or through a purchase order from your institution, please write us at support@causalchamber.ai"
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/transactions:
     get:
       summary: List the transactions of the user's wallet
       description: >
-        Returns the latest transactions of the wallet the user's experiments
-        are paid from (as in GET /v0/wallet), newest first, in the order in
-        which they were recorded: at most `limit`. All the wallet's
-        transactions are listed, also those of other users sharing the
-        wallet, so that balance_after is the wallet's running balance. A
-        wallet without transactions gives an empty list.
+        Returns the latest transactions of the wallet this user's
+        experiments and sessions are paid from, newest first: at most
+        `limit`. All the wallet's transactions are listed, also those of other
+        users sharing it, so that balance_after is the wallet's running
+        balance. Checks: limit is valid (400).
       parameters:
         - name: limit
           in: query
           required: false
-          description: >
-            The maximum number of transactions to return (the latest ones):
-            an integer between 1 and 100. Default 10.
+          description: The maximum number of transactions to return (the latest ones), an integer between 1 and 100. Default 10.
           schema:
             type: integer
             minimum: 1
@@ -802,7 +1274,7 @@ paths:
             default: 10
       responses:
         '200':
-          description: The transactions, newest first
+          description: The transactions
           content:
             application/json:
               schema:
@@ -819,33 +1291,25 @@ paths:
                   - scheduler_id
               example:
                 transactions:
-                  - transaction_id: "9b2f6c1e-4d7a-4f3b-8a2e-1c5d7e9f0a3b"
+                  - transaction_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
                     kind: "reconciliation"
                     amount: 40
-                    balance_after: 3640
+                    balance_after: 3540
                     experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
                     session_id: null
                     note: "Refund of 40 credits for experiment f47ac10b-58cc-4372-a567-0e02b2c3d479: it ran for 1m 0s, less than the estimated 1m 40s."
                     created_on: 1709856300.456
-                  - transaction_id: "3e8d5a7c-2b1f-4c9e-9d6a-7f0b2e4c8a1d"
+                  - transaction_id: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
                     kind: "charge"
                     amount: -100
-                    balance_after: 3600
+                    balance_after: 3500
                     experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
                     session_id: null
                     note: "Charge for experiment f47ac10b-58cc-4372-a567-0e02b2c3d479, with an estimated runtime of 1m 40s (1 second = 1 credit)."
                     created_on: 1709856000.123
-                  - transaction_id: "7c4a9e2f-1d3b-4e8a-b5c6-0f9d2a7e3b1c"
-                    kind: "grant"
-                    amount: 3700
-                    balance_after: 3700
-                    experiment_id: null
-                    session_id: null
-                    note: "Welcome credits"
-                    created_on: 1709800000.000
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '400':
-          description: Invalid limit (not an integer, or not between 1 and 100)
+          description: Invalid limit
           content:
             application/json:
               schema:
@@ -860,15 +1324,14 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /v0/chambers:
+  /v1/chambers:
     get:
-      summary: List the user's chambers
+      summary: List the chambers the user may use
       description: >
-        Returns the chambers this user may use, with the status,
-        configuration and mode of each. The scheduler asks each chamber for
-        its status (waiting at most 0.5 seconds for each). The order of the
-        chambers is not specified. A user with no chambers gets an empty
-        list.
+        Returns the chambers this user may use (by chamber_id), with whether
+        they are in use. It only reads the scheduler's database: the chambers
+        are not contacted (for the status a chamber reports, see the answer
+        of POST /v1/sessions). A user with no chambers gets an empty list.
       responses:
         '200':
           description: The chambers
@@ -890,72 +1353,157 @@ paths:
                 chambers:
                   - chamber_id: "lt-test-b0ni"
                     chamber_model: "Light Tunnel Mk2"
-                    chamber_config: "standard"
-                    config_version: "1.2"
-                    valid_configs: ["standard", "camera_fast"]
-                    status: "READY"
                     mode: "queue"
-                    codebase_version: "3f2a9c1"
-                  - chamber_id: "wt-test-m4na"
-                    chamber_model: "Wind Tunnel Mk2"
-                    chamber_config: "full"
-                    config_version: "1.1"
-                    valid_configs: ["full", "fast_sampling"]
-                    status: "EXECUTING"
-                    mode: "real-time"
-                    codebase_version: "3f2a9c1"
+                    chamber_state: "ready"
+                    available_on: null
                   - chamber_id: "tt-test-virt"
-                    status: "OFFLINE"
-                    mode: null
+                    chamber_model: "Dummy Chamber Mk1"
+                    mode: "interactive"
+                    chamber_state: "busy"
+                    available_on: 1760003600.123
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '401':
           $ref: '#/components/responses/Unauthorized'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '500':
-          description: >
-            Unexpected error, including a chamber that answered with an
-            unexpected status code (other than 200, 500 and 503)
+          $ref: '#/components/responses/InternalError'
+
+  /v1/chambers/{chamber_id}:
+    get:
+      summary: Get the details of a chamber
+      description: >
+        Returns a chamber the user may use: whether it is in use, as in
+        GET /v1/chambers, its configurations (with their version and
+        documentation), its queue (in queue mode; null otherwise), and its
+        active session (null if none). It only reads the scheduler's data and
+        the configuration tables: the chamber is not contacted. A chamber
+        that does not exist and one that the user may not use get the same
+        404.
+      parameters:
+        - $ref: '#/components/parameters/ChamberId'
+      responses:
+        '200':
+          description: The chamber
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "Something went wrong on our end. Please try again. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels."
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+                type: object
+                properties:
+                  chamber:
+                    $ref: '#/components/schemas/ChamberDetails'
+                  scheduler_id:
+                    $ref: '#/components/schemas/SchedulerId'
+                required:
+                  - chamber
+                  - scheduler_id
+              examples:
+                queue_mode:
+                  summary: In queue mode
+                  value:
+                    chamber:
+                      chamber_id: "tt-test-virt"
+                      chamber_model: "Dummy Chamber Mk1"
+                      mode: "queue"
+                      chamber_state: "busy"
+                      available_on: 1709859820.456
+                      configs:
+                        - chamber_config: "camera"
+                          config_version: "1.0"
+                          docs: "http://box.causalchamber.ai/config_doc_tt_mk1_camera.pdf"
+                        - chamber_config: "standard"
+                          config_version: "1.0"
+                          docs: "http://box.causalchamber.ai/config_doc_tt_mk1_standard.pdf"
+                      queue:
+                        - experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                          chamber_id: "tt-test-virt"
+                          chamber_config: "standard"
+                          status: "RUNNING"
+                          user_id: "user123"
+                          tag: "test_run_1"
+                          position: 0
+                          submitted_on: 1709856000.123
+                          started_on: 1709856100.456
+                          est_runtime_seconds: 1860.0
+                          total_instructions: 1000
+                          current_instruction: 498
+                          download_url: null
+                          checksum: null
+                        - experiment_id: "9b2e6f3a-1c4d-4e8f-a0b1-2c3d4e5f6a7b"
+                          chamber_id: "tt-test-virt"
+                          chamber_config: "camera"
+                          status: "QUEUED"
+                          user_id: null
+                          tag: null
+                          position: 1
+                          submitted_on: 1709856500.789
+                          started_on: null
+                          est_runtime_seconds: 1860.0
+                          total_instructions: 200
+                          current_instruction: null
+                          download_url: null
+                          checksum: null
+                      session: null
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+                interactive_mode:
+                  summary: In interactive mode, with another user's session
+                  value:
+                    chamber:
+                      chamber_id: "tt-test-virt"
+                      chamber_model: "Dummy Chamber Mk1"
+                      mode: "interactive"
+                      chamber_state: "busy"
+                      available_on: 1760003600.123
+                      configs:
+                        - chamber_config: "standard"
+                          config_version: "1.0"
+                          docs: "http://box.causalchamber.ai/config_doc_tt_mk1_standard.pdf"
+                      queue: null
+                      session:
+                        session_id: "a778b917-7a05-4b6c-bca7-58805cc1e971"
+                        chamber_id: "tt-test-virt"
+                        chamber_config: "standard"
+                        user_id: null
+                        started_on: 1760000000.123
+                        expires_on: 1760003600.123
+                        duration_seconds: 3600
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
-  /v0/chambers/{chamber_id}/mode:
+  /v1/chambers/{chamber_id}/mode:
     put:
-      summary: Change a chamber's mode
+      summary: Change the mode of a chamber
       description: |
-        Changes the chamber's mode to real-time or queue, for users with
-        permission to change this chamber's mode. The chamber is not
-        contacted.
+        Changes the chamber's mode to interactive or queue, for users with
+        the permission to change the chamber's mode.
 
         Checks, in order:
           1. The body is JSON (415, or 400 if malformed) and a non-empty object (400).
-          2. The field mode is present, and is "real-time" or "queue" (400).
-          3. The chamber exists, the user may use it, and has permission to
-             change its mode (403; the same answer in all three cases).
-          4. The chamber is not in use in the mode it is leaving (409):
-             it can only leave real-time mode with no active session (one
-             not stopped or replaced, whose time is not up; see
-             POST /v0/sessions/{session_id}/stop), and
-             queue mode with no experiments queued or running (QUEUED,
-             SUBMITTING, RUNNING or STOPPING).
+          2. The field mode is present (400), and is "interactive"
+             or "queue" (400).
+          3. The chamber exists and the user may use it (404).
+          4. The user has the permission to change its mode (403).
+          5. The chamber is not in use in the mode it is leaving (409): it can
+             only leave interactive mode with no active session (one not
+             stopped or replaced, whose time is not up; see
+             POST /v1/sessions/{session_id}/stop), and queue mode with no
+             experiments queued or running (QUEUED, SUBMITTING, RUNNING or
+             STOPPING). 503 if another request held the chamber for too
+             long.
 
         Changing to the chamber's current mode always succeeds, even if the
         chamber is in use. A successful change ends no active session and
-        changes no experiment (leaving real-time mode closes a session whose
+        changes no experiment (leaving interactive mode closes a session whose
         time is up).
       parameters:
-        - name: chamber_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Unique identifier of the chamber
-          example: "tt-test-virt"
+        - $ref: '#/components/parameters/ChamberId'
       requestBody:
         required: true
         content:
@@ -965,51 +1513,50 @@ paths:
               properties:
                 mode:
                   type: string
-                  enum: [real-time, queue]
-                  description: The new mode
+                  enum: [interactive, queue]
               required:
                 - mode
             example:
               mode: "queue"
       responses:
         '200':
-          description: The chamber is now in the requested mode
+          description: The mode was changed; the chamber, after the change
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  chamber_id:
-                    type: string
-                  mode:
-                    type: string
-                    enum: [real-time, queue]
+                  chamber:
+                    $ref: '#/components/schemas/Chamber'
                   scheduler_id:
                     $ref: '#/components/schemas/SchedulerId'
                 required:
-                  - chamber_id
-                  - mode
+                  - chamber
                   - scheduler_id
               example:
-                chamber_id: "tt-test-virt"
-                mode: "queue"
+                chamber:
+                  chamber_id: "tt-test-virt"
+                  chamber_model: "Dummy Chamber Mk1"
+                  mode: "queue"
+                  chamber_state: "ready"
+                  available_on: null
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '400':
-          description: Invalid request (steps 1, 2), or a malformed JSON body (HTML, see MalformedJSON)
+          description: Invalid body (steps 1, 2), or a body that is not valid JSON (HTML, see MalformedJSON)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
-                missing_field:
-                  summary: Missing field
+                missing_mode:
+                  summary: Missing mode
                   value:
                     message: "Missing field 'mode'"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 invalid_mode:
-                  summary: Invalid mode
+                  summary: Invalid mode (also "real-time", v0's name for interactive)
                   value:
-                    message: "Invalid field 'mode': it must be one of ['real-time', 'queue']"
+                    message: "Invalid field 'mode': it must be one of ['interactive', 'queue']"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
             text/html:
               schema:
@@ -1017,67 +1564,58 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: >
-            The chamber does not exist, the user may not use it, or the user
-            may not change its mode
+          description: The user may use the chamber, but not change its mode (step 4)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                message: "The provided chamber_id does not exist or you do not have permissions to access it"
+                message: "You do not have permission to change the mode of chamber 'tt-test-virt'."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          $ref: '#/components/responses/NotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '409':
           description: >
-            The chamber is in use in the mode it is leaving (step 4): the
-            response has the ID of the active session (leaving real-time),
-            or the IDs of the experiments queued or running, oldest first
-            (leaving queue). The mode is unchanged.
+            The chamber is still in use in the mode it is leaving (step 5):
+            with the id of its active session (leaving interactive mode), or
+            the ids of its experiments queued or in flight, oldest first
+            (leaving queue mode)
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  session_id:
-                    type: string
-                    description: The chamber's active session (only when leaving real-time mode)
-                  experiment_ids:
-                    type: array
-                    items:
-                      type: string
-                    description: >
-                      The chamber's experiments queued or running, of any
-                      user, oldest first (only when leaving queue mode)
-                  scheduler_id:
-                    $ref: '#/components/schemas/SchedulerId'
-                required:
-                  - message
-                  - scheduler_id
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      session_id:
+                        type: string
+                        description: The chamber's active session (only when it is leaving interactive mode with an active session)
+                      experiment_ids:
+                        type: array
+                        items:
+                          type: string
+                        description: The chamber's experiments queued or in flight (only when it is leaving queue mode with experiments queued or in flight)
               examples:
                 active_session:
-                  summary: Leaving real-time mode with an active session
+                  summary: Leaving interactive mode with an active session
                   value:
-                    message: "Chamber 'tt-test-virt' can not leave real-time mode: it has an active session."
+                    message: "Chamber 'tt-test-virt' can not leave interactive mode: it has an active session."
                     session_id: "a778b917-7a05-4b6c-bca7-58805cc1e971"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 tickets_in_queue:
-                  summary: Leaving queue mode with experiments queued or running
+                  summary: Leaving queue mode with experiments
                   value:
                     message: "Chamber 'tt-test-virt' can not leave queue mode: it has 2 experiment(s) queued or in flight."
-                    experiment_ids:
-                      - "c3d4e5f6-a7b8-4c5d-8e9f-0a1b2c3d4e5f"
-                      - "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d"
+                    experiment_ids: ["f47ac10b-58cc-4372-a567-0e02b2c3d479", "9b2e6f3a-1c4d-4e8f-a0b1-2c3d4e5f6a7b"]
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/InternalError'
         '503':
-          description: The chamber is busy (a lock could not be obtained in time); safe to retry
+          description: Another request held the chamber for too long (step 5); try again in a few seconds
           content:
             application/json:
               schema:
@@ -1086,30 +1624,18 @@ paths:
                 message: "Chamber 'tt-test-virt' is busy. Please try again in a few seconds."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
 
-  /v0/queues/{chamber_id}:
+  /v1/queues/{chamber_id}:
     get:
-      summary: Get a chamber's queue
-      description: |
-        Returns the experiment being executed by the chamber, if any (first,
-        with position 0), followed by its queued experiments, oldest first,
-        with their positions (1, 2, ...), and the queue's limits. Experiments
-        of every user are listed. The list is a consistent snapshot: no
-        experiment is listed twice or missed.
-
-        For other users' experiments, `user_id` and `tag` are null, unless
-        the requesting user has permission to see others in this chamber's
-        queue; all other fields are always shown.
-
-        Checks, in order: the chamber exists and the user may use it (403),
-        the chamber is in queue mode (422).
+      summary: Get the queue of a chamber
+      description: >
+        Returns the queue of a chamber in queue mode that the user may use:
+        the experiment being executed by the chamber, if any (position 0),
+        then the queued experiments, in the order they will run (positions
+        1, 2, ...), of any user (see Other users' data), and the queue's
+        limits. Checks, in order: the chamber exists and the user may use it
+        (404), the chamber is in queue mode (422).
       parameters:
-        - name: chamber_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Unique identifier of the chamber
-          example: "tt-test-virt"
+        - $ref: '#/components/parameters/ChamberId'
       responses:
         '200':
           description: The queue
@@ -1132,53 +1658,44 @@ paths:
                   - scheduler_id
               example:
                 experiments:
-                  - experiment_id: "c3d4e5f6-a7b8-4c5d-8e9f-0a1b2c3d4e5f"
+                  - experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
                     chamber_id: "tt-test-virt"
-                    config: "standard"
+                    chamber_config: "standard"
                     status: "RUNNING"
-                    user_id: null
-                    tag: null
+                    user_id: "user123"
+                    tag: "test_run_1"
                     position: 0
-                    submitted_on: 1709855880.001
+                    submitted_on: 1709856000.123
+                    started_on: 1709856100.456
+                    est_runtime_seconds: 1860.0
                     total_instructions: 1000
                     current_instruction: 498
-                  - experiment_id: "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d"
+                    download_url: null
+                    checksum: null
+                  - experiment_id: "9b2e6f3a-1c4d-4e8f-a0b1-2c3d4e5f6a7b"
                     chamber_id: "tt-test-virt"
-                    config: "standard"
-                    status: "QUEUED"
-                    user_id: "user123"
-                    tag: "baseline_test"
-                    position: 1
-                    submitted_on: 1709856000.123
-                    total_instructions: 200
-                    current_instruction: null
-                  - experiment_id: "d4e5f6a7-b8c9-4d5e-8f9a-0b1c2d3e4f5a"
-                    chamber_id: "tt-test-virt"
-                    config: "camera_fast"
+                    chamber_config: "camera"
                     status: "QUEUED"
                     user_id: null
                     tag: null
-                    position: 2
-                    submitted_on: 1709856120.456
-                    total_instructions: 50
+                    position: 1
+                    submitted_on: 1709856500.789
+                    started_on: null
+                    est_runtime_seconds: 1860.0
+                    total_instructions: 200
                     current_instruction: null
+                    download_url: null
+                    checksum: null
                 queue_parameters:
-                  max_tickets_in_queue: 10
+                  max_tickets_in_queue: 3
                   max_measurements: 1000
                   max_instructions: 500
                   max_wait: 3600
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: The chamber does not exist, or the user may not use it
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "The provided chamber_id does not exist or you do not have permissions to access it"
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          $ref: '#/components/responses/NotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '422':
@@ -1193,7 +1710,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /v0/experiments:
+  /v1/experiments:
     get:
       summary: List the user's experiments
       description: |
@@ -1204,7 +1721,8 @@ paths:
         STOPPING); the limit then applies to those. A user with no (active)
         experiments gets an empty list.
 
-        Checks, in order: limit is valid (400), active_only is valid (400).
+        Checks, in order: limit is valid (400), active_only
+        is valid (400).
       parameters:
         - name: limit
           in: query
@@ -1248,55 +1766,33 @@ paths:
                 experiments:
                   - experiment_id: "c3d4e5f6-a7b8-4c5d-8e9f-0a1b2c3d4e5f"
                     chamber_id: "tt-test-virt"
-                    config: "standard"
+                    chamber_config: "standard"
                     status: "RUNNING"
                     user_id: "user123"
                     tag: "pressure_test_1"
                     submitted_on: 1709856240.789
-                    download_url: null
-                    checksum: null
+                    started_on: 1709856250.123
+                    est_runtime_seconds: 1860.0
                     total_instructions: 1000
                     current_instruction: 498
-                  - experiment_id: "b2c3d4e5-f6a7-4b5c-8d9e-0f1a2b3c4d5e"
-                    chamber_id: "tt-test-virt"
-                    config: "camera_fast"
-                    status: "QUEUED"
-                    user_id: "user123"
-                    tag: ""
-                    submitted_on: 1709856120.456
                     download_url: null
                     checksum: null
-                    total_instructions: 1000
-                    current_instruction: null
                   - experiment_id: "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d"
                     chamber_id: "tt-test-virt"
-                    config: "standard"
+                    chamber_config: "standard"
                     status: "DONE"
                     user_id: "user123"
                     tag: "baseline_test"
                     submitted_on: 1709856000.123
-                    download_url: "https://box.causalchamber.ai/results/a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d.zip"
-                    checksum: "sha256:a1b2c3d4e5f6..."
+                    started_on: 1709856010.456
+                    est_runtime_seconds: 160.0
                     total_instructions: 1000
                     current_instruction: 1000
+                    download_url: "https://box.causalchamber.ai/results/a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d.zip"
+                    checksum: "sha256:a1b2c3d4e5f6..."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '400':
-          description: Invalid limit (not an integer, or not between 1 and 100), or invalid active_only (not true or false)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                invalid_limit:
-                  summary: Invalid limit
-                  value:
-                    message: "Invalid parameter 'limit': it must be an integer between 1 and 100"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-                invalid_active_only:
-                  summary: Invalid active_only
-                  value:
-                    message: "Invalid parameter 'active_only': it must be true or false"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+          $ref: '#/components/responses/InvalidLimit'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '405':
@@ -1309,25 +1805,27 @@ paths:
       description: |
         Submits an experiment to the queue of a chamber in queue mode, to be
         executed asynchronously. On success the experiment is QUEUED, its
-        estimated cost is charged to the user's wallet (see Credits), and its
-        id is returned; follow it with GET /v0/experiments/{experiment_id}.
+        estimated cost is charged to the user's wallet (see Credits), and it
+        is returned; follow it with GET /v1/experiments/{experiment_id}.
 
         Checks, in order (the first that fails determines the response):
-          1. The body is JSON (415, or 400 if malformed) and a non-empty object (400).
+          1. The body is JSON (415, or 400 if malformed) and a non-empty
+             object (400).
           2. The fields instructions, chamber_id and chamber_config are
-             present, in that order, and chamber_id and chamber_config are
-             strings (400).
+             present, in that order (400), and chamber_id and
+             chamber_config are strings (400).
           3. The tag, if given and not null, is a valid string (400).
           4. The chamber exists and the user may use it (403).
           5. The chamber is in queue mode (422).
           6. chamber_config is one of the chamber's configurations (400).
-          7. The instructions are a string or a list of strings, and valid (400).
+          7. The instructions are a string or a list of strings, and valid
+             (400).
           8. The protocol is within the queue's limits: number of
              instructions, then WAIT durations and MSR delays, then number of
              measurements (422).
-          9. The chamber is still in queue mode (422), the user has fewer
-             than max_tickets_in_queue QUEUED experiments in this queue
-             (422), and the wallet can pay for it (402).
+          9. The chamber is still in queue mode (422), the user
+             has fewer than max_tickets_in_queue QUEUED experiments in this
+             queue (422), and the wallet can pay for it (402).
       requestBody:
         required: true
         content:
@@ -1369,26 +1867,37 @@ paths:
               tag: "baseline_test"
       responses:
         '200':
-          description: The experiment was submitted (QUEUED) and charged
+          description: The experiment was submitted (QUEUED) and charged; the created experiment
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  experiment_id:
-                    type: string
-                    format: uuid
-                    description: Unique identifier of the new experiment
+                  experiment:
+                    $ref: '#/components/schemas/Experiment'
                   scheduler_id:
                     $ref: '#/components/schemas/SchedulerId'
                 required:
-                  - experiment_id
+                  - experiment
                   - scheduler_id
               example:
-                experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                experiment:
+                  experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                  chamber_id: "tt-test-virt"
+                  chamber_config: "standard"
+                  status: "QUEUED"
+                  user_id: "user123"
+                  tag: "baseline_test"
+                  submitted_on: 1709856000.123
+                  started_on: null
+                  est_runtime_seconds: 66.0
+                  total_instructions: 3
+                  current_instruction: null
+                  download_url: null
+                  checksum: null
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '400':
-          description: Invalid request (steps 1-3, 6, 7), or a malformed JSON body (HTML, see MalformedJSON)
+          description: Invalid request (steps 1-3, 6, 7), or a body that is not valid JSON (HTML, see MalformedJSON)
           content:
             application/json:
               schema:
@@ -1399,20 +1908,10 @@ paths:
                   value:
                     message: "Please provide a JSON body"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-                not_an_object:
-                  summary: Body not a JSON object (step 1)
-                  value:
-                    message: "The JSON body must be an object"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 missing_field:
                   summary: Missing field (step 2)
                   value:
                     message: "Missing field 'chamber_config'"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-                wrong_type:
-                  summary: Field of the wrong type (step 2)
-                  value:
-                    message: "Invalid field 'chamber_id': it must be a string"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 invalid_tag:
                   summary: Invalid tag, or not a string (step 3)
@@ -1447,14 +1946,7 @@ paths:
                 message: "Not enough credits: this experiment costs 120 credits (estimated duration 120s, at 1 credit per second), but only 100 are available (20 missing)."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '403':
-          description: The chamber does not exist, or the user may not use it (step 4)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "The provided chamber_id does not exist or you do not have permissions to access it"
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+          $ref: '#/components/responses/ChamberNotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '415':
@@ -1481,11 +1973,6 @@ paths:
                   value:
                     message: "Line 3: WAIT instruction of 5000ms, which is above the maximum 3600ms allowed for this queue (tt-test-virt)"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-                delay_too_long:
-                  summary: An MSR delay above max_wait (the first one)
-                  value:
-                    message: "Line 4: MSR instruction with delay=5000ms, which is above the maximum 3600ms allowed for this queue (tt-test-virt)"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 too_many_measurements:
                   summary: Above max_measurements
                   value:
@@ -1499,75 +1986,209 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /v0/experiments/{experiment_id}:
+  /v1/experiments/quote:
+    post:
+      summary: Quote the cost of an experiment
+      description: |
+        Returns what submitting this experiment (POST /v1/experiments, with
+        the same body) would charge upfront, without submitting it or
+        charging anything. That is the most the experiment can cost: when
+        it ends, the unused part is refunded (see Credits).
+
+        The quote is for the experiment, not the account: it doesn't check
+        whether the user's queue is full or their wallet can pay, which
+        may change before they submit it. A tag in the body is ignored.
+
+        Checks, in order (the first that fails determines the response),
+        the same as POST /v1/experiments up to the queue's limits:
+          1. The body is JSON (415, or 400 if malformed) and a non-empty
+             object (400).
+          2. The fields instructions, chamber_id and chamber_config are
+             present, in that order (400), and chamber_id and
+             chamber_config are strings (400).
+          3. The chamber exists and the user may use it (403).
+          4. The chamber is in queue mode (422).
+          5. chamber_config is one of the chamber's configurations (400).
+          6. The instructions are a string or a list of strings, and valid
+             (400).
+          7. The protocol is within the queue's limits: number of
+             instructions, then WAIT durations and MSR delays, then number of
+             measurements (422).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instructions:
+                  oneOf:
+                    - type: array
+                      items:
+                        type: string
+                    - type: string
+                  description: >
+                    The protocol: a list of instructions (MSR, SET or WAIT),
+                    one per item, or a single string with one instruction per
+                    line.
+                chamber_id:
+                  type: string
+                  description: The chamber to run the experiment on
+                chamber_config:
+                  type: string
+                  description: The configuration to load on the chamber for this experiment
+              required:
+                - instructions
+                - chamber_id
+                - chamber_config
+            example:
+              chamber_id: "tt-test-virt"
+              chamber_config: "standard"
+              instructions:
+                - "WAIT,5000"
+                - "SET,var_2,128"
+                - "MSR,10,0"
+      responses:
+        '200':
+          description: The quote
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  quote:
+                    $ref: '#/components/schemas/Quote'
+                  scheduler_id:
+                    $ref: '#/components/schemas/SchedulerId'
+                required:
+                  - quote
+                  - scheduler_id
+              example:
+                quote:
+                  chamber_id: "tt-test-virt"
+                  chamber_config: "standard"
+                  credits_max: 66
+                  est_runtime_seconds: 65.432
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '400':
+          description: Invalid request (steps 1, 2, 5, 6), or a body that is not valid JSON (HTML, see MalformedJSON)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                empty_body:
+                  summary: Empty JSON object (step 1)
+                  value:
+                    message: "Please provide a JSON body"
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+                missing_field:
+                  summary: Missing field (step 2)
+                  value:
+                    message: "Missing field 'chamber_config'"
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+                invalid_config:
+                  summary: Invalid chamber_config (step 5)
+                  value:
+                    message: "Invalid chamber_config \"fast\". Valid configurations: ['standard', 'camera_fast']."
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+                invalid_instructions:
+                  summary: Invalid instructions (step 6); the message starts with the offending line
+                  value:
+                    message: "Line 2: Variable 'var_9' is not defined. Check the configuration table."
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+            text/html:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/ChamberNotFound'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: The chamber is not in queue mode (step 4), or the protocol exceeds the queue's limits (step 7)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                not_queue_mode:
+                  summary: Chamber not in queue mode
+                  value:
+                    message: "Chamber 'tt-test-virt' is not in queue mode."
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+                too_many_instructions:
+                  summary: Above max_instructions
+                  value:
+                    message: "Protocol contains 600 instructions, which is above the maximum 500 allowed for this queue (tt-test-virt)"
+                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/experiments/{experiment_id}:
     get:
       summary: Get an experiment
       description: >
         Returns one of the user's experiments. Checks, in order: the id is
-        valid (400), the experiment exists and belongs to the user (403).
+        valid (400), the experiment exists and belongs
+        to the user (404).
       parameters:
         - $ref: '#/components/parameters/ExperimentId'
       responses:
         '200':
-          description: The experiment (an Experiment object, not wrapped)
+          description: The experiment
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/Experiment'
-                  - type: object
-                    properties:
-                      scheduler_id:
-                        $ref: '#/components/schemas/SchedulerId'
-                    required:
-                      - scheduler_id
+                type: object
+                properties:
+                  experiment:
+                    $ref: '#/components/schemas/Experiment'
+                  scheduler_id:
+                    $ref: '#/components/schemas/SchedulerId'
+                required:
+                  - experiment
+                  - scheduler_id
               example:
-                experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-                chamber_id: "tt-test-virt"
-                config: "standard"
-                status: "DONE"
-                user_id: "user123"
-                tag: "baseline_test"
-                submitted_on: 1709856000.123
-                download_url: "https://box.causalchamber.ai/results/f47ac10b-58cc-4372-a567-0e02b2c3d479.zip"
-                checksum: "sha256:a1b2c3d4e5f6..."
-                total_instructions: 1000
-                current_instruction: 1000
+                experiment:
+                  experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                  chamber_id: "tt-test-virt"
+                  chamber_config: "standard"
+                  status: "DONE"
+                  user_id: "user123"
+                  tag: "baseline_test"
+                  submitted_on: 1709856000.123
+                  started_on: 1709856010.456
+                  est_runtime_seconds: 160.0
+                  total_instructions: 1000
+                  current_instruction: 1000
+                  download_url: "https://box.causalchamber.ai/results/f47ac10b-58cc-4372-a567-0e02b2c3d479.zip"
+                  checksum: "sha256:a1b2c3d4e5f6..."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '400':
-          description: Invalid experiment_id (see Identifiers)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "Invalid experiment_id 'bad@id': It must be composed only of:\n  - Lowercase letters (a-z)\n  - Uppercase letters (A-Z)\n  - Numbers (0-9)\n  - Symbols: underscore (_), plus (+), colon (:), hyphen (-) "
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+          $ref: '#/components/responses/InvalidExperimentId'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: The experiment does not exist, or belongs to another user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "The provided experiment_id does not exist or you do not have permissions to access it."
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          $ref: '#/components/responses/NotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /v0/experiments/{experiment_id}/cancel:
+  /v1/experiments/{experiment_id}/cancel:
     post:
       summary: Cancel an experiment
       description: |
         Cancels one of the user's experiments. No request body (any body is
         ignored).
 
-        Checks, in order: the id is valid (400), the experiment exists and
-        belongs to the user (403). Then, depending on its status:
+        Checks, in order: the id is valid (400), the
+        experiment exists and belongs to the user (404). Then, depending on
+        its status:
           - QUEUED: it is CANCELED at once (200, status CANCELED), and its
             charge is refunded in full (see Credits).
           - RUNNING: the chamber is asked to stop it. If the chamber accepts,
@@ -1584,78 +2205,50 @@ paths:
       responses:
         '200':
           description: >
-            Cancel accepted; returns the experiment (not wrapped): CANCELED
-            if it was QUEUED, STOPPING if it was RUNNING (or its current
-            status, if it finished in the meantime)
+            Cancel accepted; the experiment: CANCELED if it was QUEUED,
+            STOPPING if it was RUNNING (or its current status, if it finished
+            in the meantime)
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: '#/components/schemas/Experiment'
-                  - type: object
-                    properties:
-                      scheduler_id:
-                        $ref: '#/components/schemas/SchedulerId'
-                    required:
-                      - scheduler_id
-              examples:
-                was_queued:
-                  summary: A QUEUED experiment
-                  value:
-                    experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-                    chamber_id: "tt-test-virt"
-                    config: "standard"
-                    status: "CANCELED"
-                    user_id: "user123"
-                    tag: "baseline_test"
-                    submitted_on: 1709856000.123
-                    download_url: null
-                    checksum: null
-                    total_instructions: 1000
-                    current_instruction: null
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-                was_running:
-                  summary: A RUNNING experiment
-                  value:
-                    experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-                    chamber_id: "tt-test-virt"
-                    config: "standard"
-                    status: "STOPPING"
-                    user_id: "user123"
-                    tag: "baseline_test"
-                    submitted_on: 1709856000.123
-                    download_url: null
-                    checksum: null
-                    total_instructions: 1000
-                    current_instruction: 312
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: Invalid experiment_id (see Identifiers)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+                type: object
+                properties:
+                  experiment:
+                    $ref: '#/components/schemas/Experiment'
+                  scheduler_id:
+                    $ref: '#/components/schemas/SchedulerId'
+                required:
+                  - experiment
+                  - scheduler_id
               example:
-                message: "Invalid experiment_id 'bad@id': It must be composed only of:\n  - Lowercase letters (a-z)\n  - Uppercase letters (A-Z)\n  - Numbers (0-9)\n  - Symbols: underscore (_), plus (+), colon (:), hyphen (-) "
+                experiment:
+                  experiment_id: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+                  chamber_id: "tt-test-virt"
+                  chamber_config: "standard"
+                  status: "CANCELED"
+                  user_id: "user123"
+                  tag: "baseline_test"
+                  submitted_on: 1709856000.123
+                  started_on: null
+                  est_runtime_seconds: 160.0
+                  total_instructions: 1000
+                  current_instruction: null
+                  download_url: null
+                  checksum: null
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '400':
+          $ref: '#/components/responses/InvalidExperimentId'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: The experiment does not exist, or belongs to another user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "The provided experiment_id does not exist or you do not have permissions to access it."
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+        '404':
+          $ref: '#/components/responses/NotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '409':
           description: >
             The experiment cannot be canceled: its status is not QUEUED or
-            RUNNING (scheduler's message), or the chamber refused to cancel
-            it (chamber's message, relayed, with its request_id)
+            RUNNING, or the chamber refused to cancel it
+            (chamber's message, relayed, with its request_id)
           content:
             application/json:
               schema:
@@ -1684,14 +2277,21 @@ paths:
                 message: "Something went wrong on our end. Please try again. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '503':
-          $ref: '#/components/responses/ChamberOffline'
+          description: The chamber could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                message: "Chamber 'tt-test-virt' is currently offline. Please try again later. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels."
+                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
 
-  /v0/sessions:
+  /v1/sessions:
     post:
-      summary: Start a real-time session
+      summary: Start an interactive session
       description: |
-        Starts a real-time session on a chamber in real-time mode, of a fixed
-        duration whose whole cost is charged at once (see Credits): the
+        Starts an interactive session on a chamber in interactive mode, of a
+        fixed duration whose whole cost is charged at once (see Credits): the
         chamber is then reset and loads the requested configuration. The
         session expires when its duration is over; its instructions are
         refused (422) from then on.
@@ -1703,24 +2303,28 @@ paths:
         until that session is stopped or its time is up.
 
         Checks, in order:
-          1. The body is JSON (415, or 400 if malformed) and a non-empty object (400).
+          1. The body is JSON (415, or 400 if malformed) and a non-empty
+             object (400).
           2. The fields chamber_id and chamber_config are present, in that
-             order, and are strings (400); duration, if given, is a whole
-             number of seconds from 60 to 2,592,000 (30 days) (400).
+             order (400), and are strings (400);
+             duration_seconds, if given and not null, is a whole number of
+             seconds from 60 to 2,592,000 (30 days) (400).
           3. The chamber exists and the user may use it (403).
-          4. The chamber is in real-time mode (422).
+          4. The chamber is in interactive mode (422).
           5. The chamber has the configuration (400).
-          6. The session is created, if the chamber is still in real-time mode
-             (422), the user may still use it (403), it has no active session
-             or the user may supersede it (409, with how long until the
-             chamber is available at the latest), and the user's wallet can pay for it
-             (402). 503 if the chamber's sessions or the wallet are locked by
-             another request for too long.
+          6. The session is created, if the chamber is still in interactive
+             mode (422), the user may still use it (403), it has no active
+             session or the user may supersede it (409, with how long until
+             the chamber is available at the latest), and the user's wallet
+             can pay for it (402). 503 if the chamber's
+             sessions or the wallet are locked by another request for too
+             long.
           7. The chamber loads the configuration (200 on success). If it
              can't, the session is closed and its whole charge refunded, and
              the chamber's answer is relayed (409 if busy, 500, 503 if in an
-             error state), or 503 if it cannot be reached or does not answer
-             within 120 seconds. A session the new one replaced stays closed.
+             error state), or 503 if it cannot be reached or
+             does not answer within 120 seconds. A session the new one
+             replaced stays closed.
 
         Loading a configuration can take tens of seconds, and is part of the
         session's duration.
@@ -1737,70 +2341,78 @@ paths:
                 chamber_config:
                   type: string
                   description: The configuration to load
-                duration:
+                duration_seconds:
                   type: integer
+                  nullable: true
                   minimum: 60
                   maximum: 2592000
                   default: 2592000
                   description: >
                     How long the session lasts at most, in seconds; it is
                     charged at once (1 credit per second), and its unused
-                    part is refunded if it ends earlier. Without it, 30 days,
-                    which a wallet with a credit floor can rarely pay for:
-                    pass the duration you need.
+                    part is refunded if it ends earlier. Without it (or null),
+                    30 days, which a wallet with a credit floor can rarely pay
+                    for: pass the duration you need.
               required:
                 - chamber_id
                 - chamber_config
             example:
               chamber_id: "tt-test-virt"
               chamber_config: "standard"
-              duration: 3600
+              duration_seconds: 3600
       responses:
         '200':
-          description: The session was started; the chamber's answer, relayed, with the session's duration and expiration time
+          description: >
+            The session was started: the chamber's answer to loading the
+            configuration, merged with the session (see StartedSession)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ChamberSession'
+                type: object
+                properties:
+                  session:
+                    $ref: '#/components/schemas/StartedSession'
+                  scheduler_id:
+                    $ref: '#/components/schemas/SchedulerId'
+                required:
+                  - session
+                  - scheduler_id
               example:
-                session_id: "a778b917-7a05-4b6c-bca7-58805cc1e971"
-                chamber_id: "tt-test-virt"
-                chamber_model: "Dummy Chamber Mk1"
-                status: "READY"
-                chamber_config: "standard"
-                config_version: "1.0"
-                valid_configs: ["standard"]
-                codebase_version: "3f2a9c1"
-                documentation: null
-                duration: 3600
-                expires_on: 1760003600.123
-                request_id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+                session:
+                  session_id: "a778b917-7a05-4b6c-bca7-58805cc1e971"
+                  chamber_id: "tt-test-virt"
+                  chamber_config: "standard"
+                  user_id: "user123"
+                  started_on: 1760000000.123
+                  expires_on: 1760003600.123
+                  duration_seconds: 3600
+                  chamber_model: "Dummy Chamber Mk1"
+                  chamber_status: "READY"
+                  config_version: "1.0"
+                  valid_configs: ["standard", "camera"]
+                  codebase_version: "3f2a9c1"
+                  documentation: null
+                  request_id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '400':
           description: >
             Invalid request (steps 1, 2), a configuration the chamber doesn't
-            have (step 5), or a malformed JSON body (HTML, see MalformedJSON)
+            have (step 5), or a body that is not valid JSON (HTML, see
+            MalformedJSON)
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: '#/components/schemas/Error'
-                  - $ref: '#/components/schemas/RelayedError'
+                $ref: '#/components/schemas/Error'
               examples:
                 missing_field:
                   summary: Missing field
                   value:
                     message: "Missing field 'chamber_config'"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-                wrong_type:
-                  summary: Field of the wrong type
-                  value:
-                    message: "Invalid field 'chamber_config': it must be a string"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 invalid_duration:
-                  summary: Invalid duration
+                  summary: Invalid duration_seconds
                   value:
-                    message: "Invalid field 'duration': it must be a whole number of seconds, from 60 to 2,592,000"
+                    message: "Invalid field 'duration_seconds': it must be a whole number of seconds, from 60 to 2,592,000"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 invalid_config:
                   summary: Configuration not available on the chamber
@@ -1819,54 +2431,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                message: "Not enough credits: the requested duration of 2,592,000 seconds requires 2,592,000 credits (1 second = 1 credit), but only 1,200 are available in your wallet (2,590,800 missing). Please topup your credits or request a shorter duration with the 'duration' parameter."
+                message: "Not enough credits: the requested duration of 2,592,000 seconds requires 2,592,000 credits (1 second = 1 credit), but only 1,200 are available in your wallet (2,590,800 missing). Please topup your credits or request a shorter duration with the 'duration_seconds' field."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '403':
-          description: The chamber does not exist, or the user may not use it
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "The provided chamber_id does not exist or you do not have permissions to access it"
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+          $ref: '#/components/responses/ChamberNotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '409':
           description: >
             The chamber has an active session the user may not supersede (step
-            6; scheduler's message, with how long until the session ends at
-            the latest),
-            or the chamber is busy loading a configuration or executing
-            instructions (step 7; relayed, and the new session is closed and
-            refunded)
+            6, with the whole seconds left until it ends at the
+            latest), or the chamber is busy loading a configuration or
+            executing instructions (step 7; relayed, and the new session is
+            closed and refunded)
           content:
             application/json:
               schema:
                 oneOf:
-                  - type: object
-                    properties:
-                      message:
-                        type: string
-                      seconds_left:
-                        type: integer
-                        description: >
-                          The whole seconds left until the active session
-                          expires (rounded up): the chamber is available then
-                          at the latest
-                      scheduler_id:
-                        $ref: '#/components/schemas/SchedulerId'
-                    required:
-                      - message
-                      - seconds_left
-                      - scheduler_id
+                  - allOf:
+                      - $ref: '#/components/schemas/Error'
+                      - type: object
+                        properties:
+                          remaining_seconds:
+                            type: integer
+                            description: >
+                              The whole seconds left until the active session
+                              expires (rounded up): the chamber is available
+                              then at the latest
+                        required:
+                          - remaining_seconds
                   - $ref: '#/components/schemas/RelayedError'
               examples:
                 chamber_busy:
                   summary: The chamber has an active session
                   value:
-                    message: "Chamber 'tt-test-virt' is in use by another session, which ends in 1h 23m 20s."
-                    seconds_left: 5000
+                    message: "Chamber 'tt-test-virt' is in use by another session, which ends in at most 1h 23m 20s."
+                    remaining_seconds: 5000
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
                 chamber_resetting:
                   summary: The chamber is busy (relayed)
@@ -1877,13 +2477,13 @@ paths:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
-          description: The chamber is not in real-time mode (steps 4, 6)
+          description: The chamber is not in interactive mode (steps 4, 6)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                message: "Chamber 'tt-test-virt' is not in real-time mode."
+                message: "Chamber 'tt-test-virt' is not in interactive mode."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '500':
           description: >
@@ -1901,11 +2501,11 @@ paths:
         '503':
           description: >
             The chamber's sessions or the user's wallet were locked by another
-            request for too long (step 6; try again in a few seconds), the
-            chamber could not be reached or did not answer within 120 seconds
-            (scheduler's message), or is in an error state (chamber's generic
-            message, relayed, with its request_id). In step 7, the new session
-            is closed and refunded.
+            request for too long (step 6; try again in a few seconds),
+            the chamber could not be reached or did not answer within 120
+            seconds, or is in an error state (chamber's
+            generic message, relayed, with its request_id). In step 7, the new
+            session is closed and refunded.
           content:
             application/json:
               schema:
@@ -1930,40 +2530,35 @@ paths:
                     request_id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
 
-  /v0/sessions/{session_id}/instructions:
+  /v1/sessions/{session_id}/instructions:
     post:
-      summary: Execute instructions in a real-time session
+      summary: Execute instructions in an interactive session
       description: |
         Executes instructions on the chamber of one of the user's sessions,
         synchronously, and returns the resulting data.
 
         Checks, in order:
-          1. The body is JSON (415, or 400 if malformed) and a non-empty object (400).
+          1. The body is JSON (415, or 400 if malformed) and a non-empty
+             object (400).
           2. The field instructions is present (400).
           3. The session exists and belongs to the user (404).
-          4. The session is still active (422): it was not closed (stopped,
-             or replaced by a newer session on the chamber), and its time is
-             not up (it is then closed).
+          4. The session is still active (422): it was not
+             closed (stopped, or replaced by a newer session on the chamber),
+             and its time is not up (it is then closed).
           5. The instructions are a string or a list of strings, and valid for
              the session's configuration (400).
-          6. The instructions fit in one batch (422): their estimated duration
-             (150 ms per measurement, plus the delays of the MSR instructions
-             and the WAIT instructions) is at most 60 seconds. A batch may run
-             past the session's expiration time.
+          6. The instructions fit in one batch (422): their
+             estimated duration (150 ms per measurement, plus the delays of
+             the MSR instructions and the WAIT instructions) is at most 60
+             seconds. A batch may run past the session's expiration time.
           7. The chamber executes them: its answer is relayed (200 with the
              data; 409 if busy, 500, 503 if in an error state), or 503 if it
-             cannot be reached, or does not answer within 120 seconds (the
-             instructions may then still run). If the chamber reports that it
-             is in another session, this session is closed (refunding its
-             unused time), and 422.
+             cannot be reached, or if it does not answer within 120 seconds
+             (the instructions may then still run). If the chamber reports
+             that it is in another session, this session is closed (refunding
+             its unused time), and 422.
       parameters:
-        - name: session_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Id of the session, as returned by POST /v0/sessions
-          example: "a778b917-7a05-4b6c-bca7-58805cc1e971"
+        - $ref: '#/components/parameters/SessionId'
       requestBody:
         required: true
         content:
@@ -2042,8 +2637,8 @@ paths:
         '400':
           description: >
             Invalid request (steps 1, 2), invalid instructions (step 5; the
-            message starts with the offending line), or a malformed JSON body
-            (HTML, see MalformedJSON)
+            message starts with the offending line), or a body that is not
+            valid JSON (HTML, see MalformedJSON)
           content:
             application/json:
               schema:
@@ -2065,14 +2660,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: The session does not exist, or belongs to another user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "The requested URL does not exist."
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+          $ref: '#/components/responses/NotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '409':
@@ -2090,10 +2678,10 @@ paths:
         '422':
           description: >
             The session is no longer active (step 4, or 7 if the chamber is in
-            another session): it was replaced by a newer session on the
-            chamber (also one started outside the scheduler), closed (e.g.
-            with POST /v0/sessions/{session_id}/stop), or its time is up; or
-            the instructions don't fit in one batch (step 6)
+            another session): it was replaced by a newer
+            session on the chamber (also one started outside the scheduler),
+            stopped, or its time is up; or the instructions don't fit in one
+            batch (step 6)
           content:
             application/json:
               schema:
@@ -2124,11 +2712,11 @@ paths:
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
         '503':
           description: >
-            The chamber could not be reached, or did not answer within 120
-            seconds (scheduler's message, with the request's scheduler_id as
-            the code to report; after a timeout the instructions may still
-            run), or is in an error state (chamber's generic message, relayed,
-            with its request_id)
+            The chamber could not be reached, or did not
+            answer within 120 seconds (the instructions may
+            still run): the message gives the request's scheduler_id as the
+            code to report. Or the chamber is in an error state (chamber's
+            generic message, relayed, with its request_id)
           content:
             application/json:
               schema:
@@ -2153,106 +2741,59 @@ paths:
                     request_id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
                     scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
 
-  /v0/sessions/{session_id}/stop:
+  /v1/sessions/{session_id}/stop:
     post:
-      summary: Stop a real-time session
+      summary: Stop an interactive session
       description: |
         Closes one of the user's sessions: its instructions are refused
-        from then on (422), the chamber can leave real-time mode (see
-        PUT /v0/chambers/{chamber_id}/mode), and the session's unused whole
+        from then on (422), the chamber can leave interactive mode (see
+        PUT /v1/chambers/{chamber_id}/mode), and the session's unused whole
         seconds are refunded (see Credits). The chamber is not contacted.
+        A request body is ignored, whatever it is (none is needed).
 
         Checks, in order:
-          1. The body is JSON (415, or 400 if malformed) and an empty object (400).
-          2. The session exists and belongs to the user (404).
-          3. The session is still active (409): it was not stopped before or
-             replaced by a newer session on the chamber, and its time is not
-             up. A session that is no longer active is left unchanged, and
-             nothing more is refunded.
+          1. The session exists and belongs to the user (404).
+          2. The session is still active (409): it was not
+             stopped before or replaced by a newer session on the chamber,
+             and its time is not up. A session that is no longer active is
+             left unchanged, and nothing more is refunded.
       parameters:
-        - name: session_id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Id of the session, as returned by POST /v0/sessions
-          example: "a778b917-7a05-4b6c-bca7-58805cc1e971"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-            example: {}
+        - $ref: '#/components/parameters/SessionId'
       responses:
         '200':
-          description: The session is closed
+          description: The session is closed; the session, with what was refunded
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  session_id:
-                    type: string
-                  refund:
-                    type: integer
-                    description: The credits refunded (0 if it was stopped less than a second before it would have expired)
-                  unused_duration:
-                    type: number
-                    description: >
-                      The session's unused time when it was stopped, in
-                      seconds: from then until it would have expired. Its
-                      whole seconds are what was refunded
+                  session:
+                    $ref: '#/components/schemas/StoppedSession'
                   scheduler_id:
                     $ref: '#/components/schemas/SchedulerId'
                 required:
-                  - session_id
-                  - refund
-                  - unused_duration
+                  - session
                   - scheduler_id
               example:
-                session_id: "a778b917-7a05-4b6c-bca7-58805cc1e971"
-                refund: 3000
-                unused_duration: 3000.512
+                session:
+                  session_id: "a778b917-7a05-4b6c-bca7-58805cc1e971"
+                  chamber_id: "tt-test-virt"
+                  chamber_config: "standard"
+                  user_id: "user123"
+                  started_on: 1760000000.123
+                  expires_on: 1760003600.123
+                  duration_seconds: 3600
+                  refund: 3000
+                  unused_seconds: 3000.512
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-        '400':
-          description: The body is not an empty object (step 1), or a malformed JSON body (HTML, see MalformedJSON)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                not_object:
-                  summary: Not an object
-                  value:
-                    message: "The JSON body must be an object"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-                not_empty:
-                  summary: An object with fields
-                  value:
-                    message: "The JSON body must be empty"
-                    scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-            text/html:
-              schema:
-                type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: The session does not exist, or belongs to another user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              example:
-                message: "The requested URL does not exist."
-                scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
+          $ref: '#/components/responses/NotFound'
         '405':
           $ref: '#/components/responses/MethodNotAllowed'
         '409':
-          description: >
-            The session is no longer active (step 3): it was stopped before,
-            replaced by a newer session on the chamber, or its time is up
+          description: The session is no longer active (step 2)
           content:
             application/json:
               schema:
@@ -2260,7 +2801,5 @@ paths:
               example:
                 message: "Session 'a778b917-7a05-4b6c-bca7-58805cc1e971' has been stopped, has expired, or has been superseded by another session."
                 scheduler_id: "550e8400-e29b-41d4-a716-446655440000"
-        '415':
-          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/InternalError'

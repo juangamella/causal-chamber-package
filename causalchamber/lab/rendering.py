@@ -25,7 +25,7 @@
 
 """This module renders the Remote Lab dashboard, i.e., the panels
 with the user's account, the chambers, and the user's active sessions
-and experiments, from the account returned by GET /v0/account.
+and experiments, from the account returned by GET /v1/account.
 
 All timestamps returned by the API are in seconds since the epoch
 (UTC); they are shown in the local timezone of the machine.
@@ -105,7 +105,7 @@ def print_dashboard(account):
     Parameters
     ----------
     account : dict
-        The account, as returned by GET /v0/account.
+        The account, as returned by GET /v1/account.
     """
     renderable, width = _render(account, time.time(), Console())
     # Print at the dashboard's own width: if the terminal is narrower,

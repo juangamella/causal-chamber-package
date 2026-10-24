@@ -23,7 +23,7 @@
 SUITE = all
 
 # Run tests
-tests: doctests
+tests: doctests unit-tests
 # Note: other test targets; examples simulator-tutorials test-downloads
 
 test-downloads:
@@ -37,7 +37,7 @@ doctests:
 	PYTHONPATH=./ python causalchamber/lab/exceptions.py
 	PYTHONPATH=./ python causalchamber/lab/chamber.py
 	PYTHONPATH=./ python causalchamber/lab/lab.py
-	PYTHONPATH=./ python causalchamber/lab/dashboard.py
+	PYTHONPATH=./ python causalchamber/lab/rendering.py
 
 # Run the unit tests
 unit-tests:
@@ -49,8 +49,6 @@ endif
 
 # Run the examples from the README
 examples:
-	# PYTHONPATH=./ python examples/example_readme_queue.py
-	# PYTHONPATH=./ python examples/example_readme_rt.py
 	PYTHONPATH=./ python examples/examples_readme_datasets_gt_models.py
 
 # Run the sctipts for the simulator tutorials
