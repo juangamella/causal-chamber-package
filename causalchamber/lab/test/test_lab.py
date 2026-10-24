@@ -123,15 +123,73 @@ class LoginTests(unittest.TestCase):
                          ('GET', ENDPOINT + '/account', CREDENTIALS))
 
     def test_init_prints_dashboard_if_verbose(self):
-        with patch_request(ok(account=ACCOUNT)), \
+        # A single request both checks the credentials and gets the dashboard
+        with patch_request(ok(account=ACCOUNT)) as request, \
              mock.patch('causalchamber.lab.lab.print_dashboard') as print_dashboard:
             Lab(credentials=CREDENTIALS, endpoint=ENDPOINT, verbose=True)
         print_dashboard.assert_called_once_with(ACCOUNT)
+        self.assertEqual(request.call_count, 1)
+
+    def test_init_does_not_print_if_not_verbose(self):
+        with patch_request(ok(account=ACCOUNT)) as request, \
+             mock.patch('causalchamber.lab.lab.print_dashboard') as print_dashboard:
+            Lab(credentials=CREDENTIALS, endpoint=ENDPOINT, verbose=False)
+        print_dashboard.assert_not_called()
+        self.assertEqual(request.call_count, 1)
+
+    def test_dashboard(self):
+        lab = make_lab()
+        updated = dict(ACCOUNT, name='New')
+        with patch_request(ok(account=updated)) as request, \
+             mock.patch('causalchamber.lab.lab.print_dashboard') as print_dashboard:
+            lab.dashboard()
+        print_dashboard.assert_called_once_with(updated)
+        self.assertEqual(request.call_args.kwargs['url'], ENDPOINT + '/account')
 
     def test_get_account(self):
         lab = make_lab()
         with patch_request(ok(account=ACCOUNT)):
             self.assertEqual(lab.get_account(), ACCOUNT)
+
+
+PAYMENT_LINKS = {'invoice': 'To pay via invoice or through a purchase order from your institution, please write us at support@causalchamber.ai'}
+
+
+class TopupTests(unittest.TestCase):
+
+    def test_topup(self):
+        lab = make_lab()
+        with patch_request(ok(payment_links=PAYMENT_LINKS)) as request, \
+             mock.patch('causalchamber.lab.lab.print_topup') as print_topup:
+            self.assertEqual(lab.topup(), PAYMENT_LINKS)
+        # The wallet is the one of the account fetched on login
+        call = request.call_args.kwargs
+        self.assertEqual((call['method'], call['url'], call['json']),
+                         ('POST', ENDPOINT + '/wallet/wallet_8f14e45f/topup', None))
+        print_topup.assert_called_once_with(PAYMENT_LINKS)
+
+    def test_topup_not_verbose(self):
+        lab = make_lab()
+        with patch_request(ok(payment_links=PAYMENT_LINKS)), \
+             mock.patch('causalchamber.lab.lab.print_topup') as print_topup:
+            lab.topup(verbose=False)
+        print_topup.assert_not_called()
+
+    def test_wallet_updated_with_account(self):
+        lab = make_lab()
+        account = dict(ACCOUNT, wallet=dict(ACCOUNT['wallet'], wallet_id='wallet_new'))
+        with patch_request(ok(account=account), ok(payment_links=PAYMENT_LINKS)) as request:
+            lab.get_account()
+            lab.topup(verbose=False)
+        self.assertEqual(request.call_args.kwargs['url'], ENDPOINT + '/wallet/wallet_new/topup')
+
+    def test_wallet_changed(self):
+        lab = make_lab()
+        with patch_request(response(404, NOT_FOUND)):
+            with self.assertRaises(UserError) as cm:
+                lab.topup(verbose=False)
+        self.assertEqual(cm.exception.code, 404)
+        self.assertIn("Please log in again", cm.exception.message)
 
 
 class MonitorTests(unittest.TestCase):
@@ -225,7 +283,7 @@ class ExperimentTests(unittest.TestCase):
         with patch_request(ok(experiments=[EXPERIMENT])), \
              mock.patch('causalchamber.lab.lab.print_experiments') as print_experiments:
             lab.get_experiments()
-        print_experiments.assert_called_once_with([EXPERIMENT])
+        print_experiments.assert_called_once_with([EXPERIMENT], 'user123', 10)
 
     def test_get_experiments_invalid_fetch_max(self):
         lab = make_lab()

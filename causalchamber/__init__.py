@@ -61,6 +61,7 @@ def _print_welcome_message():
         # e.g., when running from source without installing the package
         title = "  Causal Chamber®"
     email = "support@causalchamber.ai"
+    signup = "causalchamber.ai/get-started"
     docs = "docs.causalchamber.ai"
     # Two columns: section names (right-aligned) and their text
     # (left-aligned). A grid has no borders, so the citation can still
@@ -74,6 +75,9 @@ def _print_welcome_message():
         "To log in to the Remote Lab, call\n\n"
         f"  {_PROMPT} {_code('from causalchamber import lab')}\n"
         f"  {_PROMPT} {_code('rlab = lab.login()')}",
+    )
+    sections.add_row(
+        "Signup", f"Get your API credentials at [link=https://{signup}]{signup}[/link]"
     )
     sections.add_row(
         "Documentation", f"Guides and examples at [link=https://{docs}]{docs}[/link]"

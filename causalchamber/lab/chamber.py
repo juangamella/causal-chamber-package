@@ -24,7 +24,8 @@
 #   - Juan L. Gamella [juan@causalchamber.ai]
 
 """
-This module implements the lab.Chamber class for real-time experiments.
+This module implements the lab.Chamber class to operate a chamber
+in real time, through an interactive session.
 """
 
 # Packages from the standard library
@@ -45,7 +46,9 @@ import pandas as pd
 from PIL import Image
 
 # Imports from this package
+from causalchamber import _is_interactive
 from causalchamber.lab.api import API
+from causalchamber.lab.rendering import session_panel, to_text
 
 
 class Chamber():
@@ -67,7 +70,7 @@ class Chamber():
     documentation : str
         URL to the documentation for this chamber model and configuration.
     session_id : str
-        Unique identifier for the current session (connection).
+        Unique identifier for the current interactive session.
     verbose : int
         Verbosity level for output messages.
     """
@@ -461,26 +464,35 @@ class Chamber():
         
     def __str__(self):
         """
-        Return a formatted string representation of the chamber.
-        
+        Return a formatted string representation of the chamber: a
+        panel with the chamber and session details, with colors in
+        interactive sessions (e.g., Jupyter or a terminal) and as
+        plain text otherwise (e.g., when logged to a file).
+
         Returns
         -------
         str
             Multi-line string with the chamber details.
         """
-        msg = f"""
-    Causal Chamber® {self.chamber_id}
-  ---------------------------------
-       chamber_id : {self.chamber_id}
-            model : {self.model}
-    configuration : {self.config}
-          version : {self.config_version}
-       session_id : {self.session_id}
-         endpoint : {self._API.endpoint}
-    documentation : {self.documentation}
- codebase_version : {self.codebase_version}
-        """
-        return msg
+        return to_text(*self._panel(), color=_is_interactive())
+
+    def __rich__(self):
+        """Return the panel with the chamber and session details, for
+        printing with rich."""
+        return self._panel()[0]
+
+    def _panel(self):
+        """Return the panel with the chamber and session details, and
+        the width it should be printed at (see rendering.session_panel)."""
+        fields = [("chamber_id", self.chamber_id),
+                  ("model", self.model),
+                  ("configuration", self.config),
+                  ("version", self.config_version),
+                  ("session_id", self.session_id),
+                  ("endpoint", self._API.endpoint),
+                  ("documentation", self.documentation),
+                  ("codebase_version", self.codebase_version)]
+        return session_panel(self.chamber_id, fields)
 
 
 class Batch():
@@ -575,7 +587,7 @@ class Batch():
         instruction.
 
         The chamber will be busy during this time, i.e., not attend
-        other instructions or connection requests, so use with
+        other instructions or requests to start a session, so use with
         care. As a default, there is a limit of 30 seconds (30000 ms)
         which must be manually overriden.
         

@@ -44,7 +44,7 @@ from causalchamber.lab.api import API
 from causalchamber.lab.exceptions import LabError, UserError
 from causalchamber import _is_interactive, _PROMPT, _CODE_STYLE
 from causalchamber.lab.rendering import (print_dashboard, print_chamber, print_experiments,
-                                         run_monitor, _fmt_duration)
+                                         print_topup, run_monitor, _fmt_duration)
 
 # Minimum number of seconds between refreshes of Lab.monitor
 _MIN_REFRESH_RATE = 5
@@ -89,6 +89,14 @@ Please provide your credentials in one of the following ways.
   Lost them? Get new ones at [link=https://{_REGEN}]{_REGEN}[/link].
 """
 
+# Summary of the instructions above, as the message of the exception
+_NO_CREDENTIALS = (
+    "No credentials found. Pass the path to your credentials file with "
+    "lab.login(credentials_file=\"path/to/credentials_file\"), or set the environment "
+    f"variables {_ENV_USER} and {_ENV_PASSWORD} before starting Python or Jupyter. "
+    f"No credentials? Get them at https://{_SIGNUP}."
+)
+
 
 def login(credentials=None, credentials_file=None, endpoint="https://api.causalchamber.ai/v1", verbose=True):
     """Log in to the Remote Lab, returning a lab.Lab object to interact with it.
@@ -98,9 +106,9 @@ def login(credentials=None, credentials_file=None, endpoint="https://api.causalc
     environment variables CAUSALCHAMBER_USER and
     CAUSALCHAMBER_PASSWORD.
 
-    If no credentials are found, an exception is raised explaining
+    If no credentials are found, an exception is raised summarizing
     how to provide them. In interactive sessions (e.g., Jupyter or a
-    terminal) the explanation is also printed in a readable format.
+    terminal) detailed instructions are also printed.
 
     Parameters
     ----------
@@ -143,7 +151,8 @@ def login(credentials=None, credentials_file=None, endpoint="https://api.causalc
     >>> login()
     Traceback (most recent call last):
         ...
-    causalchamber.lab.exceptions.UserError: (code 0) No credentials found. ...
+    causalchamber.lab.exceptions.UserError: (code 0) No credentials found. Pass the path to your credentials file, i.e., lab.login(credentials_file="path/to/credentials_file"), or set the environment variables CAUSALCHAMBER_USER and CAUSALCHAMBER_PASSWORD before starting Python or Jupyter. No credentials? Get them at forms.causalchamber.ai/signup.
+    ...
 
     Setting only one of the environment variables raises an error.
 
@@ -171,10 +180,7 @@ def login(credentials=None, credentials_file=None, endpoint="https://api.causalc
     if credentials is None and credentials_file is None:
         if _is_interactive():
             _print_login_help()
-            raise UserError(0, "No credentials found. See the instructions above.")
-        else:
-            from rich.text import Text
-            raise UserError(0, "No credentials found. " + Text.from_markup(_LOGIN_HELP).plain)
+        raise UserError(0, _NO_CREDENTIALS)
     return Lab(credentials_file=credentials_file,
                endpoint=endpoint,
                verbose=verbose,
@@ -219,6 +225,7 @@ class Lab():
     
     This class provides methods to
       - monitor your account, chambers, sessions and experiments
+      - top up your credits
       - check the details of a chamber, including its queue
       - create, submit and cancel experiments in a chamber's queue
       - download the data from completed experiments
@@ -267,9 +274,27 @@ class Lab():
 
         # Get the user's account (which also checks the credentials)
         # and optionally print the dashboard
-        account = self.get_account()
         if verbose:
-            print_dashboard(account)
+            self.dashboard()
+        else:
+            self.get_account()
+
+    def dashboard(self):
+        """
+        Print the dashboard: your account and credits, the chambers
+        you can use and when they are available, and your active
+        interactive sessions and experiments. To show it live, see
+        Lab.monitor.
+
+        Raises
+        ------
+        UserError
+            If the credentials are incorrect.
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        print_dashboard(self.get_account())
 
     def get_account(self):
         """
@@ -294,7 +319,43 @@ class Lab():
             internal error ocurred on our side.
         """
         response = self._API.make_request('GET', 'account')
-        return response.json()['account']
+        account = response.json()['account']
+        # Remember the user's wallet, to top it up (see Lab.topup)
+        self._wallet_id = account['wallet']['wallet_id']
+        return account
+
+    def topup(self, verbose=True):
+        """
+        Show the ways to top up your credits, e.g., payment links or
+        instructions to pay by invoice.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True (default), the ways to top up your credits are
+            printed. If False, nothing is printed.
+
+        Returns
+        -------
+        dict
+            The ways to top up your credits, by name (e.g.,
+            'invoice'): payment links, or instructions.
+
+        Raises
+        ------
+        UserError
+            If the credentials are incorrect, or the wallet of your
+            account changed since you logged in (code 404).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        response = self._API.make_request('POST', f'wallet/{self._wallet_id}/topup',
+                                          not_found="The wallet of your account changed since you logged in. Please log in again with lab.login().")
+        payment_links = response.json()['payment_links']
+        if verbose:
+            print_topup(payment_links)
+        return payment_links
 
     def monitor(self, refresh_rate=5):
         """
@@ -376,7 +437,7 @@ class Lab():
         its unused time (1 credit per whole second) are refunded.
 
         Your active sessions are listed in the dashboard (see
-        Lab.monitor).
+        Lab.dashboard or Lab.monitor).
 
         Parameters
         ----------
@@ -540,7 +601,7 @@ class Lab():
         response = self._API.make_request('GET', 'experiments', query={'limit': fetch_max})
         experiments = response.json()['experiments']
         if verbose:
-            print_experiments(experiments)
+            print_experiments(experiments, self._API.user_id, fetch_max)
         return experiments
 
     def new_experiment(self, chamber_id, config):
