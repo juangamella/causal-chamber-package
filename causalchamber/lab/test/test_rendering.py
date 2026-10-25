@@ -167,10 +167,10 @@ class ChamberViewTests(unittest.TestCase):
         self.assertIn("queued-2", output)
         self.assertNotIn("queued-3", output)
         self.assertIn("+ 2 more queued", output)
-        # The user's own experiment is marked once, others' hidden fields are dashes
+        # The user's own experiment shows 'you' as its user, others' hidden fields are dashes
         own_line = next(line for line in output.splitlines() if 'queued-2' in line)
-        self.assertEqual(own_line.count('yours'), 1)
-        self.assertIn(f"{USER}  yours", own_line)
+        self.assertIn(" you ", own_line)
+        self.assertNotIn(USER, own_line)
         other_line = next(line for line in output.splitlines() if 'queued-1' in line)
         self.assertIn("—", other_line)
         self.assertIn("rlab.cancel_experiment('<experiment_id>')", output)
@@ -185,6 +185,12 @@ class ChamberViewTests(unittest.TestCase):
         lines = output.splitlines()
         header = next(i for i, line in enumerate(lines) if 'Status' in line and '#' in line)
         self.assertIn('submitting-0', lines[header + 1])
+
+    def test_other_users_ids_are_dimmed(self):
+        own, other = queue(2, own_position=1)[1:]
+        id_column = rendering._QUEUE_COLUMNS.index("Experiment ID")
+        self.assertEqual(rendering._queue_row(own, USER, NOW)[id_column].style, "")
+        self.assertEqual(rendering._queue_row(other, USER, NOW)[id_column].spans[-1].style, rendering._DIM_STYLE)
 
     def test_queue_print_all(self):
         output = self.render(dict(CHAMBER, queue=queue(12)), print_max=None)
@@ -202,14 +208,16 @@ class ChamberViewTests(unittest.TestCase):
     def test_own_session(self):
         output = self.interactive(dict(SESSION, expires_on=NOW + 600))
         self.assertIn(SESSION_ID, output)
-        self.assertIn(f"{USER}  yours", output)
+        session_line = next(line for line in output.splitlines() if SESSION_ID in line)
+        self.assertIn(" you ", session_line)
+        self.assertNotIn(USER, session_line)
         self.assertIn("rlab.stop_session('<session_id>')", output)
         self.assertIn("rlab.new_session('tt-test-virt', <config>, <duration>)", output)
 
     def test_other_users_session(self):
         output = self.interactive(dict(SESSION, user_id=None, expires_on=NOW + 600))
         self.assertIn(SESSION_ID, output)
-        self.assertNotIn("yours", output)
+        self.assertNotIn(" you ", output)
         self.assertNotIn("rlab.stop_session", output)
 
     def test_no_session(self):

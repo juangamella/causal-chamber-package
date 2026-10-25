@@ -187,8 +187,9 @@ def print_chamber(chamber, user_id, print_max=10):
     chamber : dict
         The chamber, as returned by GET /v1/chambers/{chamber_id}.
     user_id : str
-        The user's id, to highlight the user's own experiments and
-        session.
+        The user's id, to tell the user's own experiments and session
+        (shown with 'you' as their user) from those of other users
+        (whose ids are dimmed).
     print_max : int or None, optional
         Maximum number of queued experiments to print. If None, all
         are printed. Default is 10.
@@ -437,16 +438,31 @@ def _footer():
     return footer
 
 
-def _yours(text, own, label=False):
-    """Return the given text (rich Text) highlighted, and followed by
-    'yours' if label is True, if own is True; or as it is otherwise."""
-    if not own:
+def _theirs(text, own):
+    """Return the given text (rich Text) dimmed if it belongs to
+    another user (own is False), or as it is otherwise."""
+    if own:
         return text
     text = text.copy()
-    text.stylize(f"bold {_CYAN}")
-    if label:
-        text.append("  yours", style=_CYAN)
+    text.stylize(_DIM_STYLE)
     return text
+
+
+def _user(user_id, own):
+    """
+    Return a user id as rich Text: 'you' (highlighted) if it is the
+    user's own, the id otherwise (a dash if it is hidden).
+
+    Examples
+    --------
+    >>> _user('user123', own=True).plain
+    'you'
+    >>> _user('user456', own=False).plain
+    'user456'
+    >>> _user(None, own=False).plain
+    '—'
+    """
+    return Text("you", style=f"bold {_CYAN}") if own else _value(user_id)
 
 
 # --------------------------------------------------------------------
@@ -852,8 +868,8 @@ def _queue_panel(queue, user_id, print_max, now):
     the waiting experiments (submitting, then queued) in order: at
     most print_max of them (all if None); the rest are summarized as
     '+ N more queued'. Other users' ids and tags may be hidden (None),
-    and are shown as a dash; the user's own experiments are
-    highlighted and marked as 'yours'.
+    and are shown as a dash; the ids of other users' experiments are
+    dimmed, and the user's own show 'you' as their user.
     """
     queue = sorted(queue, key=lambda e: e.get('position') or 0)
     # A submitting experiment is at position 0, but has not started
@@ -880,8 +896,8 @@ def _queue_row(experiment, user_id, now):
     own = experiment.get('user_id') == user_id
     cells = _experiment_cells(experiment, now)
     cells["#"] = _value(experiment.get('position'), _MUTED_STYLE)
-    cells["Experiment ID"] = _yours(cells["Experiment ID"], own)
-    cells["User"] = _yours(_value(experiment.get('user_id')), own, label=True)
+    cells["Experiment ID"] = _theirs(cells["Experiment ID"], own)
+    cells["User"] = _user(experiment.get('user_id'), own)
     return [cells[column] for column in _QUEUE_COLUMNS]
 
 
@@ -894,8 +910,8 @@ def _session_panel(session, own, now):
     table = _table(["", "Session ID", "User", "Config", "Started", "Expires"])
     started_on = session.get('started_on')
     table.add_row(Text("●", style=f"blink {_GREEN}"),
-                  _yours(_value(session.get('session_id')), own),
-                  _yours(_value(session.get('user_id')), own, label=True),
+                  _theirs(_value(session.get('session_id')), own),
+                  _user(session.get('user_id'), own),
                   _value(session.get('chamber_config')),
                   Text(_MISSING if started_on is None else _fmt_submitted(started_on, now), style=_DIM_STYLE),
                   _fmt_expires(session.get('expires_on'), now))
