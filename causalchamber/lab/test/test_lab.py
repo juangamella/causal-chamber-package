@@ -142,7 +142,7 @@ class LoginTests(unittest.TestCase):
         updated = dict(ACCOUNT, name='New')
         with patch_request(ok(account=updated)) as request, \
              mock.patch('causalchamber.lab.lab.print_dashboard') as print_dashboard:
-            lab.dashboard()
+            self.assertEqual(lab.dashboard(), updated)
         print_dashboard.assert_called_once_with(updated)
         self.assertEqual(request.call_args.kwargs['url'], ENDPOINT + '/account')
 
@@ -190,6 +190,41 @@ class TopupTests(unittest.TestCase):
                 lab.topup(verbose=False)
         self.assertEqual(cm.exception.code, 404)
         self.assertIn("Please log in again", cm.exception.message)
+
+
+TRANSACTION = {'transaction_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7', 'kind': 'charge', 'amount': -100,
+               'balance_after': 3500, 'experiment_id': 'f47ac10b-58cc-4372-a567-0e02b2c3d479', 'session_id': None,
+               'note': 'Charge for experiment f47ac10b-58cc-4372-a567-0e02b2c3d479, with an estimated runtime of 1m 40s (1 second = 1 credit).',
+               'created_on': 1709856000.123}
+
+
+class TransactionsTests(unittest.TestCase):
+
+    def test_get_transactions(self):
+        lab = make_lab()
+        with patch_request(ok(transactions=[TRANSACTION]), ok(transactions=[])) as request:
+            self.assertEqual(lab.get_transactions(verbose=False), [TRANSACTION])
+            self.assertEqual(lab.get_transactions(verbose=False, fetch_max=50), [])
+        first, second = request.call_args_list
+        self.assertEqual((first.kwargs['method'], first.kwargs['url'], first.kwargs['params']),
+                         ('GET', ENDPOINT + '/transactions', {'limit': 10}))
+        self.assertEqual(second.kwargs['params'], {'limit': 50})
+
+    def test_get_transactions_prints_if_verbose(self):
+        lab = make_lab()
+        with patch_request(ok(transactions=[TRANSACTION])), \
+             mock.patch('causalchamber.lab.lab.print_transactions') as print_transactions:
+            lab.get_transactions()
+        print_transactions.assert_called_once_with([TRANSACTION], 'user123', 10)
+
+    def test_get_transactions_invalid_fetch_max(self):
+        lab = make_lab()
+        with patch_request() as request:
+            for fetch_max, error in [(0, ValueError), (-1, ValueError), (None, TypeError), (2.5, TypeError)]:
+                with self.subTest(fetch_max=fetch_max):
+                    with self.assertRaises(error):
+                        lab.get_transactions(fetch_max=fetch_max)
+        request.assert_not_called()
 
 
 class MonitorTests(unittest.TestCase):
@@ -242,6 +277,48 @@ class ChamberTests(unittest.TestCase):
                 lab.get_chamber(1)
             with self.assertRaises(ValueError):
                 lab.get_chamber('tt-test-virt', print_max=0)
+        request.assert_not_called()
+
+    def test_change_chamber_mode(self):
+        lab = make_lab()
+        changed = dict(CHAMBER, mode='interactive')
+        with patch_request(ok(chamber=changed)) as request:
+            self.assertEqual(lab.change_chamber_mode('tt-test-virt', 'interactive'), changed)
+        call = request.call_args.kwargs
+        self.assertEqual((call['method'], call['url'], call['json']),
+                         ('PUT', ENDPOINT + '/chambers/tt-test-virt/mode', {'mode': 'interactive'}))
+
+    def test_change_chamber_mode_prints_nothing(self):
+        lab = make_lab()
+        with patch_request(ok(chamber=CHAMBER)):
+            _, output = captured_stdout(lab.change_chamber_mode, 'tt-test-virt', 'queue')
+        self.assertEqual(output, '')
+
+    def test_change_chamber_mode_errors(self):
+        lab = make_lab()
+        in_use = {'message': "Chamber 'tt-test-virt' can not leave interactive mode: it has an active session.",
+                  'session_id': SESSION_ID, 'scheduler_id': 's1'}
+        for status, body, error, message in [
+                (404, NOT_FOUND, UserError, "Chamber 'tt-test-virt' does not exist or you do not have access to it."),
+                (403, {'message': "You do not have permission to change the mode of chamber 'tt-test-virt'."}, UserError,
+                 "You do not have permission to change the mode of chamber 'tt-test-virt'."),
+                (409, in_use, UserError, in_use['message']),
+                (503, {'message': "Chamber 'tt-test-virt' is busy. Please try again in a few seconds."}, LabError,
+                 "Chamber 'tt-test-virt' is busy. Please try again in a few seconds.")]:
+            with self.subTest(status=status):
+                with patch_request(response(status, body)):
+                    with self.assertRaises(error) as cm:
+                        lab.change_chamber_mode('tt-test-virt', 'queue')
+                self.assertEqual((cm.exception.code, cm.exception.message), (status, message))
+
+    def test_change_chamber_mode_invalid_arguments(self):
+        lab = make_lab()
+        with patch_request() as request:
+            for chamber_id, mode, error in [(1, 'queue', TypeError), ('tt-test-virt', None, TypeError),
+                                            ('tt-test-virt', 'real-time', ValueError)]:
+                with self.subTest(chamber_id=chamber_id, mode=mode):
+                    with self.assertRaises(error):
+                        lab.change_chamber_mode(chamber_id, mode)
         request.assert_not_called()
 
     def test_get_queue_is_get_chamber(self):
@@ -369,7 +446,7 @@ class ProtocolTests(unittest.TestCase):
             cost, output = captured_stdout(self.protocol.cost)
             self.assertEqual(captured_stdout(self.protocol.cost, verbose=False), (2356, ''))
         self.assertEqual(cost, 2356)
-        self.assertEqual(output, "This experiment will cost at most 2,356 credits (estimated runtime is 40 min). "
+        self.assertEqual(output, "This experiment will cost at most 2,356 credits (estimated runtime is 39m 16s). "
                                  "If the experiment finishes before the estimated runtime, we will refund the difference.\n")
         call = request.call_args.kwargs
         self.assertEqual((call['method'], call['url'], call['json']),

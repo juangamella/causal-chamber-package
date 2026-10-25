@@ -33,6 +33,9 @@
     /v1/chambers/{chamber_id};
   - the user's experiments (Lab.get_experiments), from GET
     /v1/experiments;
+  - the ways to top up the credits (Lab.topup), from POST
+    /v1/wallet/{wallet_id}/topup, and the transactions of the user's
+    wallet (Lab.get_transactions), from GET /v1/transactions;
   - the panel of an interactive session (lab.Chamber, lab.Session).
 
 All timestamps returned by the API are in seconds since the epoch
@@ -166,7 +169,7 @@ def run_monitor(fetch_account, refresh_rate):
         raises a UserError (e.g., the credentials are no longer valid).
     """
     console = Console(highlight=False)
-    monitor = _Monitor(fetch_account, refresh_rate, time.time())
+    monitor = _Monitor(fetch_account, refresh_rate)
     if console.is_jupyter:
         _run_jupyter(monitor, console)
     else:
@@ -222,6 +225,24 @@ def print_topup(payment_links):
         instructions), as returned by POST /v1/wallet/{wallet_id}/topup.
     """
     _print(*_render_topup(payment_links))
+
+
+def print_transactions(transactions, user_id, fetch_max):
+    """
+    Print the given transactions of the user's wallet, followed by
+    how many were fetched.
+
+    Parameters
+    ----------
+    transactions : list of dict
+        The transactions, as returned by GET /v1/transactions.
+    user_id : str
+        The user's id, shown in the header.
+    fetch_max : int
+        The maximum number of transactions that was fetched (see
+        Lab.get_transactions).
+    """
+    _print(*_render_transactions(transactions, user_id, fetch_max, time.time()))
 
 
 def session_panel(chamber_id, fields):
@@ -439,9 +460,9 @@ def _login_hint():
     Examples
     --------
     >>> _login_hint().plain
-    '>>> rlab.dashboard() to print this dashboard   >>> rlab.monitor() to run it live'
+    '>>> account = rlab.dashboard() to print this dashboard   >>> rlab.monitor() to run it live'
     """
-    return Text.assemble(_prompt("rlab.dashboard()", "to print this dashboard"), "   ",
+    return Text.assemble(_prompt("account = rlab.dashboard()", "to print this dashboard"), "   ",
                          _prompt("rlab.monitor()", "to run it live"))
 
 
@@ -505,13 +526,11 @@ def _account_body(account):
             None,
             ("institution", account.get('institution')),
             ("usage", _fmt_usage(account))]
+    # A requested academic status not verified yet is noted below
+    if account.get('requested_academic') and not account.get('is_academic'):
+        rows.append(("", Text("(pending verification)", style=_DIM_STYLE)))
     parts = [_account_grid(rows)]
     lines = len(rows)
-    # A requested academic status not verified yet is noted below
-    # (across both columns, as it does not fit in the values column)
-    if account.get('requested_academic') and not account.get('is_academic'):
-        parts.append(Text("  academic (pending verification)", style=_DIM_STYLE))
-        lines += 1
     parts.append(_account_grid([None, ("credits", Text(_fmt_credits(wallet), style=_GREEN))]))
     lines += 2
     unlimited = 'credit_floor' in wallet and wallet['credit_floor'] is None
@@ -554,7 +573,7 @@ def _chambers_panel(chambers, sessions, now, lines):
         body = Text("No chambers available.", style=_DIM_STYLE)
         return (_panel(body, "Chambers", count, height=lines + 2),
                 _panel_width(body, "Chambers", count))
-    subtitle = _prompt("rlab.get_chamber(<id>)", "for a chamber's details")
+    subtitle = _prompt("rlab.get_chamber('<chamber_id>')", "for a chamber's details")
 
     def order(chamber):
         state = chamber.get('chamber_state')
@@ -581,7 +600,7 @@ def _sessions_panel(sessions, now):
     """Return the Interactive Sessions panel and the width it needs."""
     count = f"{len(sessions)} active"
     if len(sessions) == 0:
-        body = Text("No active interactive sessions.", style=_DIM_STYLE)
+        body = Text("You have no active sessions.", style=_DIM_STYLE)
         return _panel(body, "Interactive Sessions", count), _panel_width(body, "Interactive Sessions", count)
     table = _table(["", "Session ID", "Chamber", "Config", "Expires"])
     for session in sessions:
@@ -590,7 +609,7 @@ def _sessions_panel(sessions, now):
                       _value(session.get('chamber_id')),
                       _value(session.get('chamber_config')),
                       _fmt_expires(session.get('expires_on'), now))
-    subtitle = _prompt("rlab.stop_session(<id>)")
+    subtitle = _prompt("rlab.stop_session('<session_id>')")
     return (_panel(table, "Interactive Sessions", count, subtitle),
             _panel_width(table, "Interactive Sessions", count, subtitle))
 
@@ -605,9 +624,9 @@ def _experiments_panel(experiments, now):
     """
     in_flight, waiting, _ = _by_status(experiments)
     count = f"{len(in_flight)} in flight · {len(waiting)} waiting"
-    subtitle = _prompt("rlab.get_experiments()", "for all")
+    subtitle = _prompt("rlab.get_experiments()", "for history")
     if len(experiments) == 0:
-        body = Text("No active experiments.", style=_DIM_STYLE)
+        body = Text("You have no active experiments.", style=_DIM_STYLE)
         return (_panel(body, "Experiment Queue", count, subtitle),
                 _panel_width(body, "Experiment Queue", count, subtitle))
     row_groups = [[_experiment_row(e, now, _EXPERIMENT_COLUMNS) for e in group]
@@ -633,62 +652,65 @@ class _Monitor():
     fetch_account : callable
         Function returning the account.
     refresh_rate : int or float
-        Seconds between fetches.
-    now : float
-        The current time. The account is fetched on initialization;
+        Seconds between fetches, counted from the end of the last
+        fetch (so that the countdown does not include the time the
+        request took). The account is fetched on initialization;
         errors are not caught then.
     """
 
-    def __init__(self, fetch_account, refresh_rate, now):
+    def __init__(self, fetch_account, refresh_rate):
         self._fetch_account = fetch_account
         self.refresh_rate = refresh_rate
         self.account = fetch_account()
         self.error = None
-        self.next_fetch = now + refresh_rate
+        self.next_fetch = time.time() + refresh_rate
 
-    def update(self, now):
-        """Fetch the account if it is time to. If the fetch fails with
-        a LabError, keep the last account and store the error."""
-        if now < self.next_fetch:
-            return
+    def due(self, now):
+        """Return True if it is time to fetch the account."""
+        return now >= self.next_fetch
+
+    def fetch(self):
+        """Fetch the account. If the fetch fails with a LabError, keep
+        the last account and store the error."""
         try:
             self.account = self._fetch_account()
             self.error = None
         except LabError as e:
             self.error = e
-        self.next_fetch = now + self.refresh_rate
+        self.next_fetch = time.time() + self.refresh_rate
 
     def render(self, now, console, hint=None):
         """Return the dashboard and its width (see _render), by default
         with the countdown to the next refresh as its hint."""
         if hint is None:
-            hint = _monitor_hint(self.next_fetch - now, self.refresh_rate, self.error, console.is_jupyter)
+            # The live dot flickers: it is lit every other period
+            # (two redraws in a terminal, one in Jupyter)
+            period = _JUPYTER_REDRAW_SECONDS if console.is_jupyter else 2 * _REDRAW_SECONDS
+            hint = _monitor_hint(self.next_fetch - now, self.error, console.is_jupyter,
+                                 lit=int(now / period) % 2 == 0)
         return _render(self.account, now, console, hint)
 
 
-def _monitor_hint(remaining, refresh_rate, error=None, jupyter=False):
+def _monitor_hint(remaining, error=None, jupyter=False, lit=True):
     """
-    Return the hint shown below the live dashboard: a bar draining
-    until the next refresh, the seconds left, how to stop the
-    dashboard, and the error of the last refresh, if it failed.
+    Return the hint shown below the live dashboard: a live dot (green
+    if lit, dimmed otherwise, so that it flickers across redraws), the
+    seconds left until the next refresh, how to stop the dashboard,
+    and the error of the last refresh, if it failed.
 
     Examples
     --------
-    >>> _monitor_hint(2.5, 5).plain
-    '● live  ━━━━━━━━━━━━━  next refresh in 3s  ·  Press Ctrl+C to stop'
-    >>> _monitor_hint(0, 5, jupyter=True).plain
-    '● live  ━━━━━━━━━━━━━  refreshing…  ·  Interrupt the kernel (■) to stop'
-    >>> print(_monitor_hint(4, 5, error=LabError(1, 'Could not connect to the API.')).plain)
-    ● live  ━━━━━━━━━━━━━  next refresh in 4s  ·  Press Ctrl+C to stop
+    >>> _monitor_hint(2.5).plain
+    '● live  next refresh in 3s  ·  Press Ctrl+C to stop'
+    >>> _monitor_hint(0, jupyter=True).plain
+    '● live  refreshing…  ·  Interrupt the kernel (■) to stop'
+    >>> print(_monitor_hint(4, error=LabError(1, 'Could not connect to the API.')).plain)
+    ● live  next refresh in 4s  ·  Press Ctrl+C to stop
     ⚠ The last refresh failed; showing the data from before. (code 1) Could not connect to the API.
     """
-    fraction = min(1, max(0, remaining / refresh_rate))
-    filled = round(fraction * _BAR_WIDTH)
     countdown = f"next refresh in {math.ceil(remaining)}s" if remaining > 0 else "refreshing…"
     stop = "Interrupt the kernel (■) to stop" if jupyter else "Press Ctrl+C to stop"
-    hint = Text.assemble(("●", f"blink {_GREEN}"), (" live", _GREEN), "  ",
-                         ("━" * filled, _CYAN),
-                         ("━" * (_BAR_WIDTH - filled), _BAR_TRACK_STYLE),
+    hint = Text.assemble(("●", _GREEN if lit else _BAR_TRACK_STYLE), (" live", _GREEN),
                          (f"  {countdown}  ·  {stop}", _DIM_STYLE))
     if error is not None:
         hint.append(f"\n⚠ The last refresh failed; showing the data from before. (code {error.code}) {error.message}",
@@ -708,7 +730,11 @@ def _run_terminal(monitor, console):
         with Live(console=console, auto_refresh=False, screen=True) as live:
             while True:
                 now = time.time()
-                monitor.update(now)
+                if monitor.due(now):
+                    # Show "refreshing…" while the account is fetched
+                    live.update(Constrain(*monitor.render(now, console)), refresh=True)
+                    monitor.fetch()
+                    now = time.time()
                 live.update(Constrain(*monitor.render(now, console)), refresh=True)
                 time.sleep(_REDRAW_SECONDS)
     except KeyboardInterrupt:
@@ -724,7 +750,12 @@ def _run_jupyter(monitor, console):
     try:
         while True:
             now = time.time()
-            monitor.update(now)
+            if monitor.due(now):
+                # Show "refreshing…" while the account is fetched
+                clear_output(wait=True)
+                _print(*monitor.render(now, console))
+                monitor.fetch()
+                now = time.time()
             renderable, width = monitor.render(now, console)
             clear_output(wait=True)
             _print(renderable, width)
@@ -816,23 +847,24 @@ def _configs_panel(chamber, lines):
 def _queue_panel(queue, user_id, print_max, now):
     """Return the Experiment Queue panel and the width it needs.
 
-    The experiment being executed (position 0), if any, is shown
-    first, followed by a dotted line and the queued experiments in
-    order: at most print_max of them (all if None); the rest are
-    summarized as '+ N more queued'. Other users' ids and tags may be
-    hidden (None), and are shown as a dash; the user's own experiments
-    are highlighted and marked as 'yours'.
+    As in the dashboard, the experiment in flight (running or
+    stopping), if any, is shown first, followed by a dotted line and
+    the waiting experiments (submitting, then queued) in order: at
+    most print_max of them (all if None); the rest are summarized as
+    '+ N more queued'. Other users' ids and tags may be hidden (None),
+    and are shown as a dash; the user's own experiments are
+    highlighted and marked as 'yours'.
     """
     queue = sorted(queue, key=lambda e: e.get('position') or 0)
-    in_flight = [e for e in queue if e.get('position') == 0]
-    queued = [e for e in queue if e.get('position') != 0]
+    # A submitting experiment is at position 0, but has not started
+    in_flight, queued, _ = _by_status(queue)
     shown = queued if print_max is None else queued[0:print_max]
-    count = f"{len(in_flight)} in flight · {len(queued)} queued"
+    count = f"{len(in_flight)} in flight · {len(queued)} waiting"
     if len(queue) == 0:
         body = Text("The queue is empty.", style=_DIM_STYLE)
         return _panel(body, "Experiment Queue", count), _panel_width(body, "Experiment Queue", count)
     own = any(e.get('user_id') == user_id for e in queued)
-    subtitle = _prompt("rlab.cancel_experiment(<id>)") if own else None
+    subtitle = _prompt("rlab.cancel_experiment('<experiment_id>')") if own else None
     row_groups = [[_queue_row(e, user_id, now) for e in group] for group in [in_flight, shown]]
     parts = _split_tables(_QUEUE_COLUMNS, row_groups, right_justified=[0, 3])
     if len(queued) > len(shown):
@@ -867,7 +899,7 @@ def _session_panel(session, own, now):
                   _value(session.get('chamber_config')),
                   Text(_MISSING if started_on is None else _fmt_submitted(started_on, now), style=_DIM_STYLE),
                   _fmt_expires(session.get('expires_on'), now))
-    subtitle = _prompt("rlab.stop_session(<id>)") if own else None
+    subtitle = _prompt("rlab.stop_session('<session_id>')") if own else None
     return (_panel(table, "Interactive Session", subtitle=subtitle),
             _panel_width(table, "Interactive Session", subtitle=subtitle))
 
@@ -895,8 +927,9 @@ def _render_topup(payment_links):
                     style=_DIM_STYLE)
     else:
         body = grid
-    width = min(_panel_width(body, title), _MIN_WIDTH)
-    return Padding(_panel(body, title), (1, 0, 1, _INDENT)), width + _INDENT
+    subtitle = _prompt("rlab.get_transactions()", "to see your transactions")
+    width = min(_panel_width(body, title, subtitle=subtitle), _MIN_WIDTH)
+    return Padding(_panel(body, title, subtitle=subtitle), (1, 0, 1, _INDENT)), width + _INDENT
 
 
 def _payment_link(value):
@@ -920,6 +953,64 @@ def _payment_link(value):
 
 
 # --------------------------------------------------------------------
+# Rendering: transactions (Lab.get_transactions)
+
+def _render_transactions(transactions, user_id, fetch_max, now):
+    """
+    Return the given transactions as a rich renderable, together with
+    the width (in columns) it should be printed at: a panel with one
+    row per transaction, newest first, followed by how many were
+    fetched (see _fetched_hint). The panel is at most _MIN_WIDTH
+    wide, beyond which the notes wrap.
+    """
+    title = "Transactions"
+    subtitle = _prompt("rlab.topup()", "to top up your credits")
+    if len(transactions) == 0:
+        body = Text("Your wallet has no transactions yet.", style=_DIM_STYLE)
+    else:
+        body = _table(["Date", "Kind", "Amount", "Balance", "Note"], right_justified=[2, 3])
+        # Only the notes wrap, as they can be long
+        body.columns[-1].no_wrap = False
+        for transaction in transactions:
+            body.add_row(*_transaction_row(transaction))
+    header, header_width = _header(user_id, now)
+    width = max(header_width, min(_panel_width(body, title, subtitle=subtitle), _MIN_WIDTH))
+    parts = [header, "", _panel(body, title, subtitle=subtitle)]
+    if len(transactions) > 0:
+        parts += ["", Padding(_fetched_hint(len(transactions), fetch_max, noun='transaction'), (0, 0, 0, 2))]
+    return Padding(Group(*parts), (1, 0, 1, _INDENT)), width + _INDENT
+
+
+def _transaction_row(transaction):
+    """
+    Return the cells (rich Text) of the row of the given transaction:
+    its date, kind, amount (signed, green if credits were added),
+    balance after it and note.
+
+    Examples
+    --------
+    >>> row = _transaction_row({'kind': 'charge', 'amount': -1200, 'balance_after': 3500,
+    ...                         'note': None, 'created_on': None})
+    >>> [cell.plain for cell in row]
+    ['—', 'charge', '-1,200', '3,500', '—']
+    >>> _transaction_row({'kind': 'topup', 'amount': 5000})[2].plain
+    '+5,000'
+    """
+    amount = transaction.get('amount')
+    if amount is None:
+        amount_cell = _value(None)
+    else:
+        amount_cell = Text(f"{amount:+,}", style=_GREEN if amount > 0 else "")
+    balance = transaction.get('balance_after')
+    created_on = transaction.get('created_on')
+    return [_value(None if created_on is None else _local(created_on).strftime('%Y-%m-%d %H:%M')),
+            _value(transaction.get('kind')),
+            amount_cell,
+            _value(None if balance is None else f"{balance:,}"),
+            _value(transaction.get('note'), style=_MUTED_STYLE)]
+
+
+# --------------------------------------------------------------------
 # Rendering: experiments (Lab.get_experiments)
 
 def _render_experiments(experiments, user_id, fetch_max, now):
@@ -936,9 +1027,9 @@ def _render_experiments(experiments, user_id, fetch_max, now):
     all_rows = [row for rows in row_groups for row in rows]
     widths = _column_widths(_EXPERIMENT_COLUMNS, all_rows) if all_rows else None
     titles = ["In flight", "Queued", "Finished"]
-    subtitles = [_prompt("rlab.cancel_experiment(<id>)"),
-                 _prompt("rlab.cancel_experiment(<id>)"),
-                 _prompt("rlab.download_data(<id>, <root>)")]
+    subtitles = [_prompt("rlab.cancel_experiment('<experiment_id>')"),
+                 _prompt("rlab.cancel_experiment('<experiment_id>')"),
+                 _prompt("rlab.download_data('<experiment_id>', '<root>')")]
     panels, widths_needed = [], []
     for title, subtitle, rows in zip(titles, subtitles, row_groups):
         if len(rows) == 0:
@@ -956,11 +1047,13 @@ def _render_experiments(experiments, user_id, fetch_max, now):
     return Padding(renderable, (1, 0, 1, _INDENT)), width + _INDENT
 
 
-def _fetched_hint(n, fetch_max):
+def _fetched_hint(n, fetch_max, noun='experiment'):
     """
     Return the hint below the experiments printed by
-    Lab.get_experiments: how many were fetched and, if there may be
-    more (n = fetch_max), how to fetch them.
+    Lab.get_experiments (or the transactions printed by
+    Lab.get_transactions, with noun='transaction'): how many were
+    fetched and, if there may be more (n = fetch_max), how to fetch
+    them.
 
     Examples
     --------
@@ -972,14 +1065,16 @@ def _fetched_hint(n, fetch_max):
     'Fetched all your 3 experiments.'
     >>> _fetched_hint(0, 10).plain
     'You have not submitted any experiments yet.'
+    >>> _fetched_hint(5, 5, noun='transaction').plain
+    'Fetched your 5 latest transactions.   >>> rlab.get_transactions(fetch_max=<n>) to fetch more'
     """
     if n == 0:
         return Text("You have not submitted any experiments yet.", style=_DIM_STYLE)
     elif n < fetch_max:
-        return Text(f"Fetched all your {n} experiment{'s' if n > 1 else ''}.", style=_DIM_STYLE)
-    latest = "your latest experiment" if n == 1 else f"your {n} latest experiments"
+        return Text(f"Fetched all your {n} {noun}{'s' if n > 1 else ''}.", style=_DIM_STYLE)
+    latest = f"your latest {noun}" if n == 1 else f"your {n} latest {noun}s"
     return Text.assemble((f"Fetched {latest}.   ", _DIM_STYLE),
-                         _prompt("rlab.get_experiments(fetch_max=<n>)", "to fetch more"))
+                         _prompt(f"rlab.get_{noun}s(fetch_max=<n>)", "to fetch more"))
 
 
 # --------------------------------------------------------------------
@@ -1087,20 +1182,24 @@ def _local(timestamp):
 def _fmt_usage(account):
     """
     Return the usage of an account: academic if its academic status
-    has been verified, commercial otherwise.
+    has been verified or requested (pending verification), commercial
+    otherwise.
 
     Examples
     --------
-    >>> _fmt_usage({'is_academic': True})
+    >>> _fmt_usage({'requested_academic': True, 'is_academic': True})
     'academic'
     >>> _fmt_usage({'requested_academic': True, 'is_academic': False})
+    'academic'
+    >>> _fmt_usage({'requested_academic': False, 'is_academic': False})
     'commercial'
     >>> _fmt_usage({}) is None
     True
     """
     if account.get('is_academic') is None:
         return None
-    return 'academic' if account['is_academic'] else 'commercial'
+    academic = account['is_academic'] or account.get('requested_academic')
+    return 'academic' if academic else 'commercial'
 
 
 def _fmt_credits(wallet):
@@ -1151,6 +1250,30 @@ def _fmt_duration(seconds):
         return f"{hours}h {minutes}m"
     days, hours = divmod(hours, 24)
     return f"{days}d {hours}h"
+
+
+def _fmt_seconds(seconds):
+    """
+    Return a duration in seconds as hours, minutes and seconds,
+    rounded up to the second and leaving out the parts that are zero.
+
+    Examples
+    --------
+    >>> _fmt_seconds(104)
+    '1m 44s'
+    >>> _fmt_seconds(44.2)
+    '45s'
+    >>> _fmt_seconds(120)
+    '2m'
+    >>> _fmt_seconds(3 * 3600 + 5)
+    '3h 5s'
+    >>> _fmt_seconds(0)
+    '0s'
+    """
+    hours, rest = divmod(math.ceil(max(0, seconds)), 3600)
+    minutes, seconds = divmod(rest, 60)
+    parts = [f"{value}{unit}" for value, unit in [(hours, 'h'), (minutes, 'm'), (seconds, 's')] if value > 0]
+    return " ".join(parts) if parts else "0s"
 
 
 def _fmt_clock(seconds):

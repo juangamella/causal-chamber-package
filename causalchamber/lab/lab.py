@@ -44,7 +44,7 @@ from causalchamber.lab.api import API
 from causalchamber.lab.exceptions import LabError, UserError
 from causalchamber import _is_interactive, _PROMPT, _CODE_STYLE
 from causalchamber.lab.rendering import (print_dashboard, print_chamber, print_experiments,
-                                         print_topup, run_monitor, _fmt_duration)
+                                         print_topup, print_transactions, run_monitor, _fmt_seconds)
 
 # Minimum number of seconds between refreshes of Lab.monitor
 _MIN_REFRESH_RATE = 5
@@ -151,7 +151,7 @@ def login(credentials=None, credentials_file=None, endpoint="https://api.causalc
     >>> login()
     Traceback (most recent call last):
         ...
-    causalchamber.lab.exceptions.UserError: (code 0) No credentials found. Pass the path to your credentials file, i.e., lab.login(credentials_file="path/to/credentials_file"), or set the environment variables CAUSALCHAMBER_USER and CAUSALCHAMBER_PASSWORD before starting Python or Jupyter. No credentials? Get them at forms.causalchamber.ai/signup.
+    causalchamber.lab.exceptions.UserError: (code 0) No credentials found. Pass the path to your credentials file with lab.login(credentials_file="path/to/credentials_file"), or set the environment variables CAUSALCHAMBER_USER and CAUSALCHAMBER_PASSWORD before starting Python or Jupyter. No credentials? Get them at https://forms.causalchamber.ai/signup.
     ...
 
     Setting only one of the environment variables raises an error.
@@ -225,8 +225,9 @@ class Lab():
     
     This class provides methods to
       - monitor your account, chambers, sessions and experiments
-      - top up your credits
-      - check the details of a chamber, including its queue
+      - top up your credits and see their transactions
+      - check the details of a chamber, including its queue, and
+        change its mode (if you have the permission)
       - create, submit and cancel experiments in a chamber's queue
       - download the data from completed experiments
       - start and stop interactive sessions with a chamber
@@ -286,6 +287,12 @@ class Lab():
         interactive sessions and experiments. To show it live, see
         Lab.monitor.
 
+        Returns
+        -------
+        dict
+            The account details shown in the dashboard (see
+            Lab.get_account).
+
         Raises
         ------
         UserError
@@ -294,7 +301,9 @@ class Lab():
             If no connection to the API can be established or an
             internal error ocurred on our side.
         """
-        print_dashboard(self.get_account())
+        account = self.get_account()
+        print_dashboard(account)
+        return account
 
     def get_account(self):
         """
@@ -356,6 +365,46 @@ class Lab():
         if verbose:
             print_topup(payment_links)
         return payment_links
+
+    def get_transactions(self, verbose=True, fetch_max=10):
+        """
+        Retrieve the latest transactions of your wallet (every change
+        of its credits, e.g., charges, refunds and top-ups), newest
+        first.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            If True (default), the transactions are printed. If False,
+            nothing is printed.
+        fetch_max : int, optional
+            Maximum number of transactions to retrieve (the latest
+            ones). Default is 10.
+
+        Returns
+        -------
+        list of dict
+            The transactions, newest first.
+
+        Raises
+        ------
+        TypeError
+            If fetch_max is not an integer.
+        ValueError
+            If fetch_max is not larger than zero.
+        UserError
+            If the credentials are incorrect, or fetch_max is larger
+            than allowed by the API (code 400).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side.
+        """
+        _check_positive_int(fetch_max, 'fetch_max')
+        response = self._API.make_request('GET', 'transactions', query={'limit': fetch_max})
+        transactions = response.json()['transactions']
+        if verbose:
+            print_transactions(transactions, self._API.user_id, fetch_max)
+        return transactions
 
     def monitor(self, refresh_rate=5):
         """
@@ -531,6 +580,55 @@ class Lab():
         as Lab.get_chamber, see its documentation.
         """
         return self.get_chamber(chamber_id, verbose=verbose, print_max=print_max)
+
+    def change_chamber_mode(self, chamber_id, mode):
+        """
+        Change the mode of a chamber to 'interactive' (it runs
+        interactive sessions) or 'queue' (it runs the experiments in
+        its queue). Requires the permission to change the chamber's
+        mode.
+
+        The chamber can only leave interactive mode if it has no
+        active session, and queue mode if it has no experiments
+        queued or in flight. Changing to the chamber's current mode
+        always succeeds.
+
+        Parameters
+        ----------
+        chamber_id : str
+            The unique identifier of the chamber.
+        mode : str
+            The new mode: 'interactive' or 'queue'.
+
+        Returns
+        -------
+        dict
+            The chamber after the change, with its chamber_id,
+            chamber_model, mode, chamber_state and available_on.
+
+        Raises
+        ------
+        TypeError
+            If chamber_id or mode are not strings.
+        ValueError
+            If mode is not 'interactive' or 'queue'.
+        UserError
+            If the credentials are incorrect, you do not have the
+            permission to change the chamber's mode (code 403), the
+            chamber does not exist or you do not have access to it
+            (code 404), or the chamber is still in use in its current
+            mode (code 409).
+        LabError
+            If no connection to the API can be established or an
+            internal error ocurred on our side, or the chamber is busy
+            with another request (code 503; try again in a few
+            seconds).
+        """
+        _check_id(chamber_id, 'chamber_id')
+        _check_mode(mode)
+        response = self._API.make_request('PUT', f'chambers/{chamber_id}/mode', {'mode': mode},
+                                          not_found=f"Chamber '{chamber_id}' does not exist or you do not have access to it.")
+        return response.json()['chamber']
 
     def get_experiment(self, experiment_id):
         """
@@ -850,7 +948,7 @@ class Protocol(Batch):
         cost = quote['credits_max']
         if verbose:
             print(f"This experiment will cost at most {cost:,} credits (estimated runtime is "
-                  f"{_fmt_duration(quote['est_runtime_seconds'])}). If the experiment finishes "
+                  f"{_fmt_seconds(quote['est_runtime_seconds'])}). If the experiment finishes "
                   "before the estimated runtime, we will refund the difference.")
         return cost
 
@@ -1105,6 +1203,28 @@ def _check_id(value, name):
     """
     if not isinstance(value, str):
         raise TypeError(f"{name} must be a string, not {type(value).__name__}")
+
+
+def _check_mode(mode):
+    """
+    Check that a chamber mode is 'interactive' or 'queue'.
+
+    Examples
+    --------
+    >>> _check_mode('queue')
+    >>> _check_mode('real-time')
+    Traceback (most recent call last):
+        ...
+    ValueError: mode must be 'interactive' or 'queue', not 'real-time'
+    >>> _check_mode(None)
+    Traceback (most recent call last):
+        ...
+    TypeError: mode must be a string, not NoneType
+    """
+    if not isinstance(mode, str):
+        raise TypeError(f"mode must be a string, not {type(mode).__name__}")
+    elif mode not in ('interactive', 'queue'):
+        raise ValueError(f"mode must be 'interactive' or 'queue', not {mode!r}")
 
 
 def _check_positive_int(value, name, allow_none=False):

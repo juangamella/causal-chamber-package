@@ -187,7 +187,7 @@ class API():
         Parameters
         ----------
         method : str
-            HTTP method to use. Must be either 'GET' or 'POST'.
+            HTTP method to use. Must be 'GET', 'POST' or 'PUT'.
         path : str
             API path to append to the base endpoint (e.g., 'account',
             'experiments/<id>'). Leading/trailing slashes are handled
@@ -230,7 +230,7 @@ class API():
 
         Examples
         --------
-        Only GET and POST are allowed.
+        Only GET, POST and PUT are allowed.
 
         >>> api = API(credentials=('user', 'password'))
         >>> api.make_request('DELETE', 'account')
@@ -239,7 +239,7 @@ class API():
         ValueError: HTTP method 'DELETE' is not allowed
 
         """
-        if method not in ['GET', 'POST']:
+        if method not in ['GET', 'POST', 'PUT']:
             raise ValueError(f"HTTP method '{method}' is not allowed")
 
         # Ensure there's a single '/' between endpoint and path

@@ -44,7 +44,7 @@ from causalchamber.lab.chamber import Chamber
 from causalchamber.lab.exceptions import LabError, UserError
 from causalchamber.lab.test.mocks import patch_request
 from causalchamber.lab.test.test_lab import (ACCOUNT, CHAMBER, CREDENTIALS, ENDPOINT, EXPERIMENT,
-                                             SESSION, SESSION_ID, STARTED_SESSION, ok)
+                                             SESSION, SESSION_ID, STARTED_SESSION, TRANSACTION, ok)
 
 NOW = 1760000000.0
 USER = 'user123'
@@ -78,14 +78,19 @@ class DashboardTests(unittest.TestCase):
 
     def test_login_hint(self):
         output = self.render(ACCOUNT)
-        self.assertIn(">>> rlab.dashboard() to print this dashboard   >>> rlab.monitor() to run it live", output)
+        self.assertIn(">>> account = rlab.dashboard() to print this dashboard   >>> rlab.monitor() to run it live", output)
         # The hint is above the footer, with a blank line in between
         lines = output.splitlines()
         footer = next(i for i, line in enumerate(lines) if 'Issues or feedback?' in line)
         self.assertIn('rlab.monitor()', lines[footer - 2])
 
+    def test_live_dot_flickers(self):
+        lit, unlit = rendering._monitor_hint(3), rendering._monitor_hint(3, lit=False)
+        self.assertEqual(lit.plain, unlit.plain)
+        self.assertNotEqual(lit.get_style_at_offset(Console(), 0), unlit.get_style_at_offset(Console(), 0))
+
     def test_custom_hint(self):
-        output = self.render(ACCOUNT, hint=rendering._monitor_hint(3, 5))
+        output = self.render(ACCOUNT, hint=rendering._monitor_hint(3))
         self.assertIn("Press Ctrl+C to stop", output)
         self.assertNotIn("rlab.monitor()", output)
 
@@ -98,7 +103,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("1 / 2 ready", output)
         self.assertIn("Light Tunnel Mk2", output)
         self.assertIn("unavailable", output)
-        self.assertIn("rlab.get_chamber(<id>)", output)
+        self.assertIn("rlab.get_chamber('<chamber_id>')", output)
         # Unavailable chambers are listed last
         self.assertLess(output.index('lt-1'), output.index('wt-2'))
 
@@ -130,7 +135,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(usage_lines(requested_academic=True, is_academic=True), ['usage       academic'])
         self.assertEqual(usage_lines(requested_academic=False, is_academic=False), ['usage       commercial'])
         self.assertEqual(usage_lines(requested_academic=True, is_academic=False),
-                         ['usage       commercial', 'academic (pending verification)'])
+                         ['usage       academic', '(pending verification)'])
 
 
 class ChamberViewTests(unittest.TestCase):
@@ -156,7 +161,7 @@ class ChamberViewTests(unittest.TestCase):
 
     def test_queue(self):
         output = self.render(dict(CHAMBER, queue=queue(4, own_position=2)), print_max=2)
-        self.assertIn("1 in flight · 4 queued", output)
+        self.assertIn("1 in flight · 4 waiting", output)
         self.assertIn("in-flight", output)
         self.assertIn("queued-1", output)
         self.assertIn("queued-2", output)
@@ -168,7 +173,18 @@ class ChamberViewTests(unittest.TestCase):
         self.assertIn(f"{USER}  yours", own_line)
         other_line = next(line for line in output.splitlines() if 'queued-1' in line)
         self.assertIn("—", other_line)
-        self.assertIn("rlab.cancel_experiment(<id>)", output)
+        self.assertIn("rlab.cancel_experiment('<experiment_id>')", output)
+
+    def test_submitting_is_waiting(self):
+        # A submitting experiment is at position 0, but is shown with
+        # the waiting ones, as in the dashboard
+        submitting = experiment(status='SUBMITTING', position=0, experiment_id='submitting-0',
+                                user_id=None, tag=None)
+        output = self.render(dict(CHAMBER, queue=[submitting] + queue(2)[1:]))
+        self.assertIn("0 in flight · 3 waiting", output)
+        lines = output.splitlines()
+        header = next(i for i, line in enumerate(lines) if 'Status' in line and '#' in line)
+        self.assertIn('submitting-0', lines[header + 1])
 
     def test_queue_print_all(self):
         output = self.render(dict(CHAMBER, queue=queue(12)), print_max=None)
@@ -187,7 +203,7 @@ class ChamberViewTests(unittest.TestCase):
         output = self.interactive(dict(SESSION, expires_on=NOW + 600))
         self.assertIn(SESSION_ID, output)
         self.assertIn(f"{USER}  yours", output)
-        self.assertIn("rlab.stop_session(<id>)", output)
+        self.assertIn("rlab.stop_session('<session_id>')", output)
         self.assertIn("rlab.new_session('tt-test-virt', <config>, <duration>)", output)
 
     def test_other_users_session(self):
@@ -221,7 +237,7 @@ class ExperimentsViewTests(unittest.TestCase):
         positions = [output.index(s) for s in ["In flight  1", "running-1", "Queued  2", "submitting-1",
                                                "queued-1", "Finished  3", "done-1", "failed-1", "canceled-1"]]
         self.assertEqual(positions, sorted(positions))
-        for label in ["✓ done", "✗ failed", "⊘ canceled", "starting now", "rlab.download_data(<id>, <root>)"]:
+        for label in ["✓ done", "✗ failed", "⊘ canceled", "starting now", "rlab.download_data('<experiment_id>', '<root>')"]:
             self.assertIn(label, output)
         self.assertNotIn('…', output)
 
@@ -243,41 +259,44 @@ class MonitorTests(unittest.TestCase):
 
     def test_fetches_every_refresh_rate(self):
         fetch = mock.Mock(return_value=ACCOUNT)
-        monitor = rendering._Monitor(fetch, 5, now=0)
-        monitor.update(4.9)
-        self.assertEqual(fetch.call_count, 1)
-        monitor.update(5)
-        self.assertEqual((fetch.call_count, monitor.next_fetch), (2, 10))
+        # The fetches end at times 0 and 7
+        with mock.patch.object(rendering.time, 'time', side_effect=[0, 7]):
+            monitor = rendering._Monitor(fetch, 5)
+            self.assertFalse(monitor.due(4.9))
+            self.assertTrue(monitor.due(5))
+            monitor.fetch()
+        # The next fetch is counted from the end of the last one
+        self.assertEqual((fetch.call_count, monitor.next_fetch), (2, 12))
 
     def test_keeps_last_account_on_lab_error(self):
         error = LabError(1, 'Could not connect to the API.')
         fetch = mock.Mock(side_effect=[ACCOUNT, error, dict(ACCOUNT, name='New')])
-        monitor = rendering._Monitor(fetch, 5, now=0)
-        monitor.update(5)
-        self.assertEqual((monitor.account, monitor.error), (ACCOUNT, error))
-        output = text(monitor.render(6, Console(width=200)))
-        self.assertIn("The last refresh failed", output)
-        self.assertIn("Ada Lovelace", output)
-        monitor.update(10)
+        with mock.patch.object(rendering.time, 'time', return_value=0):
+            monitor = rendering._Monitor(fetch, 5)
+            monitor.fetch()
+            self.assertEqual((monitor.account, monitor.error), (ACCOUNT, error))
+            output = text(monitor.render(1, Console(width=200)))
+            self.assertIn("The last refresh failed", output)
+            self.assertIn("Ada Lovelace", output)
+            monitor.fetch()
         self.assertEqual((monitor.account['name'], monitor.error), ('New', None))
 
     def test_user_errors_propagate(self):
-        fetch = mock.Mock(side_effect=[ACCOUNT, UserError(401, 'Invalid credentials')])
-        monitor = rendering._Monitor(fetch, 5, now=0)
+        monitor = rendering._Monitor(mock.Mock(side_effect=[ACCOUNT, UserError(401, 'Invalid credentials')]), 5)
         with self.assertRaises(UserError):
-            monitor.update(5)
+            monitor.fetch()
 
     def test_first_fetch_errors_propagate(self):
         with self.assertRaises(LabError):
-            rendering._Monitor(mock.Mock(side_effect=LabError(1, 'Down')), 5, now=0)
+            rendering._Monitor(mock.Mock(side_effect=LabError(1, 'Down')), 5)
 
     def test_terminal(self):
         # A terminal tall enough for the dashboard (see test_terminal_too_short)
         console = Console(file=io.StringIO(), width=200, height=60, force_terminal=True, color_system=None)
-        monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5, now=NOW)
-        times = iter([NOW + 1, NOW + 2, NOW + 3])
+        times = iter([NOW, NOW + 1, NOW + 2, NOW + 3])
         with mock.patch.object(rendering.time, 'time', side_effect=lambda: next(times)), \
              mock.patch.object(rendering.time, 'sleep', side_effect=[None, KeyboardInterrupt]):
+            monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5)
             rendering._run_terminal(monitor, console)
         output = console.file.getvalue()
         self.assertIn("next refresh in 4s", output)
@@ -286,10 +305,24 @@ class MonitorTests(unittest.TestCase):
         self.assertTrue(output.rstrip().endswith("support@causalchamber.ai and we'll be happy to help"))
         self.assertIn("rlab.monitor()", output[output.rindex("Account"):])
 
+    def test_countdown_starts_after_fetch(self):
+        # "refreshing…" is shown during a fetch, and the countdown
+        # starts over from the full refresh rate once it ends, however
+        # long it took (here, from NOW + 5 to NOW + 7)
+        console = Console(file=io.StringIO(), width=200, height=60, force_terminal=True, color_system=None)
+        times = iter([NOW, NOW + 5, NOW + 7, NOW + 7, NOW + 8])
+        with mock.patch.object(rendering.time, 'time', side_effect=lambda: next(times)), \
+             mock.patch.object(rendering.time, 'sleep', side_effect=KeyboardInterrupt):
+            monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5)
+            rendering._run_terminal(monitor, console)
+        output = console.file.getvalue()
+        self.assertLess(output.index("refreshing…"), output.index("next refresh in 5s"))
+        self.assertNotIn("next refresh in 3s", output)
+
     def test_terminal_too_short(self):
         # The live dashboard is cropped, but printed in full on exit
         console = Console(file=io.StringIO(), width=200, height=20, force_terminal=True, color_system=None)
-        monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5, now=NOW)
+        monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5)
         with mock.patch.object(rendering.time, 'sleep', side_effect=KeyboardInterrupt):
             rendering._run_terminal(monitor, console)
         output = console.file.getvalue()
@@ -300,13 +333,13 @@ class MonitorTests(unittest.TestCase):
     def test_jupyter(self):
         display = types.ModuleType('IPython.display')
         display.clear_output = mock.Mock()
-        monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5, now=NOW)
         console = mock.Mock(is_jupyter=True, width=115)
         printed = []
         with mock.patch.dict(sys.modules, {'IPython': types.ModuleType('IPython'), 'IPython.display': display}), \
              mock.patch.object(rendering.time, 'time', return_value=NOW + 1), \
              mock.patch.object(rendering.time, 'sleep', side_effect=[None, KeyboardInterrupt]), \
              mock.patch.object(rendering, '_print', side_effect=lambda r, w: printed.append(rendering.to_text(r, w))):
+            monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5)
             rendering._run_jupyter(monitor, console)
         self.assertEqual(display.clear_output.call_count, 3)
         display.clear_output.assert_called_with(wait=True)
@@ -339,6 +372,37 @@ class TopupViewTests(unittest.TestCase):
 
     def test_no_payment_links(self):
         self.assertIn("No ways to top up your credits", text(rendering._render_topup({})))
+
+    def test_transactions_hint(self):
+        self.assertIn(">>> rlab.get_transactions() to see your transactions",
+                      text(rendering._render_topup({'card': 'https://pay.example.com/abc'})))
+
+
+class TransactionsViewTests(unittest.TestCase):
+
+    def render(self, transactions, fetch_max=10):
+        return text(rendering._render_transactions(transactions, USER, fetch_max, NOW))
+
+    def test_transactions(self):
+        topup = dict(TRANSACTION, kind='topup', amount=3600, balance_after=3600, experiment_id=None, note=None)
+        output = self.render([TRANSACTION, topup])
+        for expected in ["Transactions", "charge", "-100", "3,500", "topup", "+3,600",
+                         "rlab.topup() to top up your credits", "Fetched all your 2 transactions."]:
+            self.assertIn(expected, output)
+        # Long notes wrap instead of being cut
+        self.assertNotIn('…', output)
+        self.assertIn("(1 second = 1 credit).", output)
+        self.assertLess(output.index('charge'), output.index('topup'))
+
+    def test_fetched_hint(self):
+        output = self.render([TRANSACTION] * 3, fetch_max=3)
+        self.assertIn("Fetched your 3 latest transactions.", output)
+        self.assertIn("rlab.get_transactions(fetch_max=<n>) to fetch more", output)
+
+    def test_empty(self):
+        output = self.render([])
+        self.assertIn("Your wallet has no transactions yet.", output)
+        self.assertNotIn("Fetched", output)
 
 
 class SessionPanelTests(unittest.TestCase):

@@ -69,6 +69,13 @@ class MakeRequestTests(unittest.TestCase):
         self.assertEqual(first.kwargs['json'], {'chamber_id': 'lt-1'})
         self.assertEqual(second.kwargs['params'], {'limit': 5})
 
+    def test_put(self):
+        with patch_request(response(200, {})) as request:
+            self.api.make_request('PUT', 'chambers/lt-1/mode', {'mode': 'queue'})
+        call = request.call_args.kwargs
+        self.assertEqual((call['method'], call['url'], call['json']),
+                         ('PUT', ENDPOINT + '/chambers/lt-1/mode', {'mode': 'queue'}))
+
     def test_client_errors_raise_user_error(self):
         for code in [400, 401, 402, 403, 409, 422]:
             with self.subTest(code=code):
