@@ -6,6 +6,7 @@ Unreleased
 -- lab.Chamber accepts an optional duration (in seconds) for its session, and has a new wait(milliseconds) method.
 -- New Lab.get_chamber(chamber_id) shows a chamber's state, its configurations (with links to their variable tables), and its queue or active session. Lab.get_queue now does the same.
 -- New Lab.change_chamber_mode(chamber_id, mode) changes the mode of a chamber to 'interactive' or 'queue' (requires the permission to do so).
+-- lab.Protocol is now exported (e.g., for help(lab.Protocol.from_df)).
 -- New Protocol.cost() returns (and prints) the most an experiment can cost in credits, without submitting it.
 -- New Lab.topup() shows the ways to top up your credits, and Lab.get_transactions(fetch_max=10) the latest transactions of your wallet (charges, refunds, top-ups, ...).
 -- Lab.get_experiments now takes fetch_max (default 10) instead of print_max, and prints the experiments in three panels: in flight, queued and finished.
