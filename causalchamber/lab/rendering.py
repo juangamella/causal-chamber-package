@@ -99,7 +99,7 @@ _YELLOW = "#dcbc63"           # busy, queued
 _CYAN = "#79bfe0"             # submitting, 'yours'
 _ORANGE = "#e0956a"           # stopping, warnings
 _RED = "#e06c6c"              # failed
-_INK = "#121315"              # text of the 'rlab' badge
+_INK = "#121315"              # text of the badge in the header
 _HEADER_STYLE = f"bold {_MUTED_STYLE}"
 
 # Icon, label and style of each experiment status
@@ -413,10 +413,11 @@ def _prompt(code, note=None):
     return text
 
 
-def _header(user_id, now):
-    """Return the header line (the title, the user ID and the current
-    local date and time) and the width it needs."""
-    left = Text.assemble((" rlab ", f"bold {_INK} on {_PROMPT_STYLE}"),
+def _header(user_id, now, view):
+    """Return the header line (a badge with the view being shown, e.g.,
+    'dashboard', the title, the user ID and the current local date
+    and time) and the width it needs."""
+    left = Text.assemble((f" {view} ", f"bold {_INK} on {_PROMPT_STYLE}"),
                          "  Causal Chamber® | ",
                          ("Remote Lab", "bold"),
                          (f"  {user_id or ''}", _DIM_STYLE))
@@ -482,7 +483,7 @@ def _login_hint():
                          _prompt("rlab.monitor()", "to run it live"))
 
 
-def _render(account, now, console, hint=None):
+def _render(account, now, console, hint=None, view='dashboard'):
     """
     Return the dashboard for the given account as a rich renderable,
     together with the width (in columns) it should be printed at.
@@ -496,7 +497,7 @@ def _render(account, now, console, hint=None):
 
     The hint (a rich renderable) is shown below the panels, above the
     footer: by default, how to run the dashboard live (see
-    Lab.monitor).
+    Lab.monitor). The view (e.g., 'monitor') is shown in the header.
     """
     sessions = account.get('sessions') or []
     chambers = account.get('chambers') or []
@@ -508,7 +509,7 @@ def _render(account, now, console, hint=None):
     chambers_panel, chambers_width = _chambers_panel(chambers, sessions, now, lines)
     sessions_panel, sessions_width = _sessions_panel(sessions, now)
     experiments_panel, experiments_width = _experiments_panel(account.get('experiments') or [], now)
-    header, header_width = _header(account.get('user_id'), now)
+    header, header_width = _header(account.get('user_id'), now, view)
     wide_width = max(_MIN_WIDTH, _ACCOUNT_WIDTH + _GAP + chambers_width, sessions_width, experiments_width)
     stacked_width = max(header_width, _ACCOUNT_WIDTH, chambers_width, sessions_width, experiments_width)
     # Columns of the console available after the indentation
@@ -697,14 +698,17 @@ class _Monitor():
 
     def render(self, now, console, hint=None):
         """Return the dashboard and its width (see _render), by default
-        with the countdown to the next refresh as its hint."""
-        if hint is None:
-            # The live dot flickers: it is lit every other period
-            # (two redraws in a terminal, one in Jupyter)
-            period = _JUPYTER_REDRAW_SECONDS if console.is_jupyter else 2 * _REDRAW_SECONDS
-            hint = _monitor_hint(self.next_fetch - now, self.error, console.is_jupyter,
-                                 lit=int(now / period) % 2 == 0)
-        return _render(self.account, now, console, hint)
+        live: with the countdown to the next refresh as its hint, and
+        'monitor' in the header. With a hint (e.g., when the monitor
+        stops), it is shown as the static dashboard."""
+        if hint is not None:
+            return _render(self.account, now, console, hint)
+        # The live dot flickers: it is lit every other period (two
+        # redraws in a terminal, one in Jupyter)
+        period = _JUPYTER_REDRAW_SECONDS if console.is_jupyter else 2 * _REDRAW_SECONDS
+        hint = _monitor_hint(self.next_fetch - now, self.error, console.is_jupyter,
+                             lit=int(now / period) % 2 == 0)
+        return _render(self.account, now, console, hint, view='monitor')
 
 
 def _monitor_hint(remaining, error=None, jupyter=False, lit=True):
@@ -809,7 +813,7 @@ def _render_chamber(chamber, user_id, print_max, now):
     else:
         body = Text("This chamber is not accepting experiments or sessions at the moment.", style=_DIM_STYLE)
         bottom, bottom_width = _panel(body, "Unavailable"), _panel_width(body, "Unavailable")
-    header, header_width = _header(user_id, now)
+    header, header_width = _header(user_id, now, 'chamber')
     width = max(header_width, _INFO_WIDTH + _GAP + configs_width, bottom_width)
     top = Table.grid(padding=(0, 1), expand=True)
     top.add_column(width=_INFO_WIDTH)
@@ -989,7 +993,7 @@ def _render_transactions(transactions, user_id, fetch_max, now):
         body.columns[-1].no_wrap = False
         for transaction in transactions:
             body.add_row(*_transaction_row(transaction))
-    header, header_width = _header(user_id, now)
+    header, header_width = _header(user_id, now, 'transactions')
     width = max(header_width, min(_panel_width(body, title, subtitle=subtitle), _MIN_WIDTH))
     parts = [header, "", _panel(body, title, subtitle=subtitle)]
     if len(transactions) > 0:
@@ -1056,7 +1060,7 @@ def _render_experiments(experiments, user_id, fetch_max, now):
                 body.add_row(*row)
         panels.append(_panel(body, title, str(len(rows)), subtitle))
         widths_needed.append(_panel_width(body, title, str(len(rows)), subtitle))
-    header, header_width = _header(user_id, now)
+    header, header_width = _header(user_id, now, 'experiments')
     width = max(header_width, *widths_needed)
     hint = Padding(_fetched_hint(len(experiments), fetch_max), (0, 0, 0, 2))
     renderable = Group(header, "", panels[0], "", panels[1], "", panels[2], "", hint)

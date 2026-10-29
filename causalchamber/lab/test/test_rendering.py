@@ -138,6 +138,26 @@ class DashboardTests(unittest.TestCase):
                          ['usage       academic', '(pending verification)'])
 
 
+class HeaderTests(unittest.TestCase):
+
+    def badge(self, rendered):
+        """Return the first word of the header (the badge)."""
+        return next(line for line in text(rendered).splitlines() if line.strip()).split()[0]
+
+    def test_badge_shows_view(self):
+        monitor = rendering._Monitor(mock.Mock(return_value=ACCOUNT), 5)
+        console = Console(width=200)
+        for rendered, view in [(rendering._render(ACCOUNT, NOW, console), 'dashboard'),
+                               (monitor.render(NOW, console), 'monitor'),
+                               # When the monitor stops, it shows the static dashboard
+                               (monitor.render(NOW, console, rendering._login_hint()), 'dashboard'),
+                               (rendering._render_chamber(dict(CHAMBER, queue=[]), USER, 10, NOW), 'chamber'),
+                               (rendering._render_experiments([], USER, 10, NOW), 'experiments'),
+                               (rendering._render_transactions([], USER, 10, NOW), 'transactions')]:
+            with self.subTest(view=view):
+                self.assertEqual(self.badge(rendered), view)
+
+
 class ChamberViewTests(unittest.TestCase):
 
     def render(self, chamber, print_max=10):
