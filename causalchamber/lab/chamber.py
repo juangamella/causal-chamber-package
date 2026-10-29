@@ -24,7 +24,8 @@
 #   - Juan L. Gamella [juan@causalchamber.ai]
 
 """
-This module implements the lab.Chamber class for real-time experiments.
+This module implements the lab.Chamber class to operate a chamber
+in real time, through an interactive session.
 """
 
 # Packages from the standard library
@@ -38,18 +39,22 @@ import itertools
 import time
 import sys
 import numbers
+import math
 
 # Third-party packages
 import pandas as pd
 from PIL import Image
 
 # Imports from this package
+from causalchamber import _is_interactive
 from causalchamber.lab.api import API
+from causalchamber.lab.rendering import session_panel, to_text
 
 
 class Chamber():
     """
-    Interface for operating a Causal Chamber® in real time..
+    Interface for operating a Causal Chamber® in real time, through
+    an interactive session.
     
     
     Attributes
@@ -65,19 +70,20 @@ class Chamber():
     documentation : str
         URL to the documentation for this chamber model and configuration.
     session_id : str
-        Unique identifier for the current session (connection).
+        Unique identifier for the current interactive session.
     verbose : int
         Verbosity level for output messages.
     """
     
-    def __init__(self, chamber_id, config, credentials_file=None, endpoint="https://api.causalchamber.ai/v0", verbose=1, credentials=None):
-        """Start a new real-time connection to the specified chamber,
+    def __init__(self, chamber_id, config, credentials_file=None, endpoint="https://api.causalchamber.ai/v1", verbose=1, credentials=None, duration=None):
+        """Start a new interactive session with the specified chamber,
         returning a lab.Chamber instance to control it.
-        
-        The chamber will reset & verify its hardware, and stop
-        attending any other active connections (i.e., instances of
-        lab.Chamber)
-        
+
+        The chamber will reset & verify its hardware. The whole
+        duration of the session is charged when it starts (1 credit
+        per second); to stop it early and get a refund for the unused
+        time, see Lab.stop_session, or use Lab.new_session instead.
+
         Parameters
         ----------
         chamber_id : str
@@ -94,8 +100,8 @@ class Chamber():
             ```
             Either credentials or credentials_file must be
             provided. If both are, credentials is used.
-        endpoint : str or None, optional
-            Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v0".
+        endpoint : str, optional
+            Base URL for the API endpoint. Default is "https://api.causalchamber.ai/v1".
         verbose : int, optional
             Verbosity level for status messages. 0 for silent, 1 for normal
             output (default is 1).
@@ -103,7 +109,11 @@ class Chamber():
             A tuple (<user>, <password>) with the user and password
             for the API. Either credentials or credentials_file
             must be provided. If both are, credentials is used.
-        
+        duration : int or None, optional
+            The maximum duration of the session, in seconds. If None
+            (default), the API's default duration is used (30 days),
+            which you may not have enough credits for.
+
         Raises
         ------
         FileNotFoundError
@@ -111,22 +121,47 @@ class Chamber():
         ValueError
             If neither credentials nor credentials_file is provided.
         UserError
-            If credentials are incorrect, or the requested chamber or
-            configuration do not exist.        
+            If credentials are incorrect, the requested chamber or
+            configuration do not exist, the chamber is in use by
+            another session, or you do not have enough credits.
         LabError
             If no connection to the API can be established or an error
             on our side prevents starting a session with the chamber.
 
+        """
+        # Load credentials
+        self._API = API(credentials_file = credentials_file,
+                        endpoint = endpoint,
+                        credentials = credentials)
+        self._start_session(chamber_id, config, duration, verbose)
+
+    def _start_session(self, chamber_id, config, duration, verbose):
+        """
+        Start an interactive session with the chamber, using the API
+        client in self._API.
+
+        Internal method used by __init__ and lab.Session.
+
+        Parameters
+        ----------
+        chamber_id : str
+            The unique chamber identifier.
+        config : str
+            Desired configuration of the chamber.
+        duration : int or None
+            The maximum duration of the session, in seconds, or None
+            for the API's default.
+        verbose : int or bool
+            Verbosity level for status messages.
         """
         # Store parameters
         self._chamber_id = chamber_id
         self._config = config
         self._verbose = verbose
 
-        # Load credentials
-        self._API = API(credentials_file = credentials_file,
-                        endpoint = endpoint,
-                        credentials = credentials)
+        body = {'chamber_id': chamber_id, 'chamber_config': config}
+        if duration is not None:
+            body['duration_seconds'] = duration
 
         # Start a session
         if self.verbose:
@@ -137,15 +172,16 @@ class Chamber():
             start = timeit.default_timer()
 
         try:
-            response = self._API.make_request('POST', 'sessions', {'chamber_id': chamber_id, 'chamber_config': config})
-            self._session_id = response.json()['session_id']
-            self._chamber_model = response.json()['chamber_model']
-            self._config_version = response.json()['config_version']
-            self._documentation = response.json()['documentation']
-            self._codebase_version = response.json()['codebase_version']
+            response = self._API.make_request('POST', 'sessions', body)
+            session = response.json()['session']
+            self._session_id = session['session_id']
+            self._chamber_model = session.get('chamber_model')
+            self._config_version = session.get('config_version')
+            self._documentation = session.get('documentation')
+            self._codebase_version = session.get('codebase_version')
         finally:
             spinner.stop() if self.verbose else None
-            
+
         if self.verbose:
             print(f"  Done. ({timeit.default_timer() - start:0.2f} seconds)")
             print(self)
@@ -166,7 +202,10 @@ class Chamber():
         ------
         TypeError
             If target is not a string.
-        UserError        
+        ValueError
+            If value cannot be converted to float, or is not finite
+            (i.e., NaN or infinity).
+        UserError
             If the target does not exist in this chamber/configuration
             or value is invalid (code 400), or if the chamber is
             currently busy restarting or executing other instructoins
@@ -205,10 +244,10 @@ class Chamber():
         Raises
         ------
         TypeError
-            If n or delay are not numbers.
+            If n or delay are not integers.
         ValueError
             If n is not larger than zero or delay is negative.
-        UserError        
+        UserError
             Returned if the chamber is currently busy restarting or executing
             other instructions (code 409).
         LabError
@@ -225,6 +264,48 @@ class Chamber():
         the Chamber.measure(..) documentation for full details.
         """
         return self.measure(n, delay)
+
+    def wait(self, milliseconds, limit=30000):
+        """Make the chamber wait the given milliseconds, i.e., sends a
+        WAIT,:milliseconds instruction to the chamber. The call
+        returns once the chamber has waited.
+
+        The chamber will be busy during this time, i.e., not attend
+        other instructions, so use with care. As a default, there is a
+        limit of 30 seconds (30000 ms) which must be manually
+        overriden.
+
+        Parameters
+        ----------
+        milliseconds : int
+            Duration to wait in milliseconds. Must be positive.
+        limit: int or None
+            To avoid accidentally blocking the chamber, if limit is
+            not None and milliseconds is above limit, a
+            ValueError exception is raised. Setting limit to None
+            means no check is performed. Default is 30 seconds (30000
+            ms).
+
+        Raises
+        ------
+        TypeError
+            If milliseconds is not an integer.
+        ValueError
+            If milliseconds is not positive or milliseconds is larger
+            than limit.
+        UserError
+            If the chamber is currently busy restarting or executing
+            other instructions (code 409), or the wait is longer than
+            allowed by the API (code 422).
+        LabError
+            If there is an error on our side, e.g., an internal server
+            error, a hardware error or a connection issue.
+
+        """
+        instruction = _generate_wait(milliseconds)
+        if limit is not None and milliseconds > limit:
+            raise ValueError(f"milliseconds ({milliseconds}) is larger than the set limit ({limit} ms). Set 'limit=None' to override.")
+        return self._submit_instructions([instruction])
 
     @property
     def verbose(self):
@@ -383,26 +464,35 @@ class Chamber():
         
     def __str__(self):
         """
-        Return a formatted string representation of the chamber.
-        
+        Return a formatted string representation of the chamber: a
+        panel with the chamber and session details, with colors in
+        interactive sessions (e.g., Jupyter or a terminal) and as
+        plain text otherwise (e.g., when logged to a file).
+
         Returns
         -------
         str
             Multi-line string with the chamber details.
         """
-        msg = f"""
-    Causal Chamber® {self.chamber_id}
-  ---------------------------------
-       chamber_id : {self.chamber_id}
-            model : {self.model}
-    configuration : {self.config}
-          version : {self.config_version}
-       session_id : {self.session_id}
-         endpoint : {self._API.endpoint}
-    documentation : {self.documentation}
- codebase_version : {self.codebase_version}
-        """
-        return msg
+        return to_text(*self._panel(), color=_is_interactive())
+
+    def __rich__(self):
+        """Return the panel with the chamber and session details, for
+        printing with rich."""
+        return self._panel()[0]
+
+    def _panel(self):
+        """Return the panel with the chamber and session details, and
+        the width it should be printed at (see rendering.session_panel)."""
+        fields = [("chamber_id", self.chamber_id),
+                  ("model", self.model),
+                  ("configuration", self.config),
+                  ("version", self.config_version),
+                  ("session_id", self.session_id),
+                  ("endpoint", self._API.endpoint),
+                  ("documentation", self.documentation),
+                  ("codebase_version", self.codebase_version)]
+        return session_panel(self.chamber_id, fields)
 
 
 class Batch():
@@ -477,7 +567,10 @@ class Batch():
         ------
         TypeError
             If target is not a string.
-        
+        ValueError
+            If value cannot be converted to float, or is not finite
+            (i.e., NaN or infinity).
+
         Examples
         --------
         >>> batch = Batch(None)
@@ -494,7 +587,7 @@ class Batch():
         instruction.
 
         The chamber will be busy during this time, i.e., not attend
-        other instructions or connection requests, so use with
+        other instructions or requests to start a session, so use with
         care. As a default, there is a limit of 30 seconds (30000 ms)
         which must be manually overriden.
         
@@ -517,7 +610,7 @@ class Batch():
         Raises
         ------
         TypeError
-            If milliseconds is not a number.
+            If milliseconds is not an integer.
         ValueError
             If milliseconds is not positive or milliseconds is larger
             than limit.
@@ -552,17 +645,17 @@ class Batch():
         ----------
         n : int
             Number of measurements to collect. Must be positive.
-        delay : int or float, optional
+        delay : int, optional
             Delay between consecutive measurements in milliseconds (default is 0).
-        
+
         Returns
         -------
         None
-        
+
         Raises
         ------
         TypeError
-            If n or delay are not numbers.
+            If n or delay are not integers.
         ValueError
             If n is not positive or delay is negative.
         
@@ -609,7 +702,7 @@ class Batch():
         n : int, optional
             Number of measurements to perform after setting the values
             in each row. Default is 1.
-        delay : float, optional
+        delay : int, optional
             Delay (in milliseconds) between measurements. Default is 0.
         wait : int or None, optional
             Duration of the WAIT instruction (in milliseconds) between
@@ -740,8 +833,9 @@ def _generate_set(target, value):
     TypeError
         If target is not a string.
     ValueError
-        If the given value could not be converted to float.
-    
+        If the given value could not be converted to float, or is
+        not finite (i.e., NaN or infinity).
+
     Examples
     --------
     >>> _generate_set('red', 240)
@@ -768,12 +862,24 @@ def _generate_set(target, value):
     Traceback (most recent call last):
         ...
     ValueError: could not convert string to float: '1aw'
+
+    >>> _generate_set('red', float('nan'))
+    Traceback (most recent call last):
+        ...
+    ValueError: value must be finite, not nan
+
+    >>> _generate_set('red', float('-inf'))
+    Traceback (most recent call last):
+        ...
+    ValueError: value must be finite, not -inf
     """
     # Check inputs
     if not isinstance(target, str):
         raise TypeError(f"target must be a string, not {type(target).__name__}")
-    # Generate and return
     value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"value must be finite, not {value}")
+    # Generate and return
     return f'SET,{target},{value}'
 
 def _generate_msr(n, delay):
@@ -830,17 +936,27 @@ def _generate_msr(n, delay):
     Traceback (most recent call last):
         ...
     ValueError: delay must be a non-negative integer
+
+    >>> _generate_msr(True, 0)
+    Traceback (most recent call last):
+        ...
+    TypeError: n must be an integer larger than zero, not bool
+
+    >>> _generate_msr(1, False)
+    Traceback (most recent call last):
+        ...
+    TypeError: delay must be a non-negative integer, not bool
     """
-    # Check inputs: n
+    # Check inputs: n (bool is a subclass of int, so exclude it explicitly)
     error_msg = "n must be an integer larger than zero"
-    if not isinstance(n, numbers.Integral):
+    if isinstance(n, bool) or not isinstance(n, numbers.Integral):
         raise TypeError(f"{error_msg}, not {type(n).__name__}")
     if n <= 0:
         raise ValueError(error_msg)
 
     # Check inputs: delay
     error_msg = "delay must be a non-negative integer"
-    if not isinstance(delay, numbers.Integral):
+    if isinstance(delay, bool) or not isinstance(delay, numbers.Integral):
         raise TypeError(f"{error_msg}, not {type(delay).__name__}")
     if delay < 0:
         raise ValueError(error_msg)
@@ -891,10 +1007,15 @@ def _generate_wait(milliseconds):
     Traceback (most recent call last):
         ...
     ValueError: milliseconds must be an integer larger than zero
+
+    >>> _generate_wait(True)
+    Traceback (most recent call last):
+        ...
+    TypeError: milliseconds must be an integer larger than zero, not bool
     """
-    # Check input
+    # Check input (bool is a subclass of int, so exclude it explicitly)
     error_msg = "milliseconds must be an integer larger than zero"
-    if not isinstance(milliseconds, numbers.Integral):
+    if isinstance(milliseconds, bool) or not isinstance(milliseconds, numbers.Integral):
         raise TypeError(f"{error_msg}, not {type(milliseconds).__name__}")
     if milliseconds <= 0:
         raise ValueError(error_msg)
@@ -929,8 +1050,9 @@ def _parse_multipart_response(content, content_type):
     Raises
     ------
     ValueError
-        If no boundary is found in the content_type header.
-    
+        If no boundary is found in the content_type header, or an
+        image part is not base64 encoded.
+
     Examples
     --------
     # TODO: add some fixed content to the doctest environment and test this
@@ -969,21 +1091,16 @@ def _parse_multipart_response(content, content_type):
             csv_data = pd.read_csv(io.StringIO(csv_content))
             
         elif content_type == 'image/jpeg':
-            # Extract image data
-            img_content = part.get_payload()
-            
-            # Check if content is base64 encoded
-            transfer_encoding = part.get('Content-Transfer-Encoding', '')
-            if transfer_encoding == 'base64':
-                img_content = base64.b64decode(img_content)
-            elif isinstance(img_content, str):
-                # If it's a string, it might be base64 encoded
-                try:
-                    img_content = base64.b64decode(img_content)
-                except:
-                    # If base64 decode fails, treat as raw bytes
-                    img_content = img_content.encode()
-            
+            # Extract image data, which is always base64 encoded
+            # (with or without a Content-Transfer-Encoding header).
+            # Whitespace (e.g., line breaks) is removed so the strict
+            # decoding below only fails on non-base64 content.
+            img_content = ''.join(part.get_payload().split())
+            try:
+                img_content = base64.b64decode(img_content, validate=True)
+            except ValueError as e:
+                raise ValueError(f"Could not decode image in response; image parts must be base64 encoded. Error details: {e}")
+
             # Load image using PIL
             img = Image.open(io.BytesIO(img_content))
             images.append(np.array(img))
