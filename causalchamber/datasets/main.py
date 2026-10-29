@@ -134,7 +134,7 @@ class Experiment:
         """Returns a pandas dataframe with the experiment data (excl. images)"""
         return pd.read_csv(self.csv_path)
 
-    def as_image_array(self):
+    def as_image_array(self, size=None):
         raise NotImplementedError("This is not an image dataset!")
 
 

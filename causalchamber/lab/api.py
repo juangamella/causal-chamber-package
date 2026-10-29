@@ -54,7 +54,7 @@ class API():
         Base URL for the API endpoint.
     """
 
-    def __init__(self, credentials_file=None, endpoint='https://api.causalchamber.ai/v0', credentials=None):
+    def __init__(self, credentials_file=None, endpoint='https://api.causalchamber.ai/v1', credentials=None):
         """Initialize the API client with credentials and endpoint.
         
         Reads authentication credentials from a configuration file and sets up
@@ -75,7 +75,7 @@ class API():
             provided. If both are, credentials is used.
         endpoint : str, optional
             Base URL for the API endpoint. Default is 
-            'https://api.causalchamber.ai/v0'.
+            'https://api.causalchamber.ai/v1'.
         credentials : tuple of string or None, optional        
             A tuple (<user>, <password>) with the user and password
             for the API. Either credentials or credentials_file
@@ -175,77 +175,73 @@ class API():
         """
         return self._endpoint
         
-    def make_request(self, method, path, parameters=None):
+    def make_request(self, method, path, parameters=None, query=None, not_found=None):
         """Make an HTTP request to the API endpoint.
-        
+
         Sends an authenticated HTTP request to the API and handles various
         response codes. Automatically tracks timing statistics for each request.
         The method constructs the full URL by combining the endpoint with the
-        provided path and sends the parameters as JSON in the request body.
-        
+        provided path, sends the parameters as JSON in the request body,
+        and the query as URL parameters.
+
         Parameters
         ----------
         method : str
-            HTTP method to use. Must be either 'GET' or 'POST'.
+            HTTP method to use. Must be 'GET', 'POST' or 'PUT'.
         path : str
-            API path to append to the base endpoint (e.g., '/data', '/models').
-            Leading/trailing slashes are handled automatically.
+            API path to append to the base endpoint (e.g., 'account',
+            'experiments/<id>'). Leading/trailing slashes are handled
+            automatically.
         parameters : dict or None, optional
             Dictionary of parameters to send as JSON body in the
             request. If None, the request is made with an empty
             body. Default is None
-        
+        query : dict or None, optional
+            Dictionary of parameters to send in the URL (e.g.,
+            {'limit': 10} for '?limit=10'). Default is None.
+        not_found : str or None, optional
+            For paths with an id (e.g., 'experiments/<id>'), the
+            message of the UserError raised if the API returns 404,
+            which it does for ids that do not exist or that the user
+            cannot access. If None (default), a 404 raises a LabError,
+            as it points to an unknown URL, i.e., an error in this
+            client.
+
         Returns
         -------
         requests.Response
             Response object from the API request if successful (status code 200).
-        
+
         Raises
         ------
         ValueError
             If method is not 'GET' or 'POST'.
         UserError
-            If the API returns a 400, 401, 403 or 409 HTTP error, indicating a
-            client-side error.
+            If the API returns a 400, 401, 402, 403, 409 or 422 HTTP
+            error, indicating a client-side error, or a 404 HTTP error
+            and not_found is given.
         LabError
-            If it is impossible to connect to the API, or the API
+            If it is impossible to connect to the API, the request
+            fails for any other reason (e.g., a timeout or an
+            interrupted response), or the API
             returns any other HTTP code, including error codes (e.g.,
             404, 405 and 5XX) which indicate a server error or point
             to a potential error in this client.
-        
+
         Examples
         --------
-        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081/v0')
-        >>> api.make_request('POST', 'sessions/', None)
+        Only GET, POST and PUT are allowed.
+
+        >>> api = API(credentials=('user', 'password'))
+        >>> api.make_request('DELETE', 'account')
         Traceback (most recent call last):
         ...
-        causalchamber.lab.exceptions.UserError: (code 401) ...
-
-        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081')
-        >>> response = api.make_request('GET', '/health', None)
-        >>> response.status_code
-        200
-
-        >>> api.make_request('POST', '/health', {'experiment_id': '123'})
-        Traceback (most recent call last):
-        ...
-        causalchamber.lab.exceptions.LabError: (code 405) ...
-
-        >>> api.make_request('POST', '/wrong_path', {'experiment_id': '123'})
-        Traceback (most recent call last):
-        ...
-        causalchamber.lab.exceptions.LabError: (code 404) ...
-
-        >>> api = API('credentials_example.ini', endpoint='http://localhost:9999')
-        >>> api.make_request('GET', '/health', None)
-        Traceback (most recent call last):
-        ...
-        causalchamber.lab.exceptions.LabError: (code 1) Could not connect to the API at http://localhost:9999. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: ...
+        ValueError: HTTP method 'DELETE' is not allowed
 
         """
-        if method not in ['GET', 'POST']:
+        if method not in ['GET', 'POST', 'PUT']:
             raise ValueError(f"HTTP method '{method}' is not allowed")
-        
+
         # Ensure there's a single '/' between endpoint and path
         url = self._endpoint.rstrip('/') + '/' + path.lstrip('/')
 
@@ -254,10 +250,13 @@ class API():
                 method=method,
                 url=url,
                 json=parameters,
+                params=query,
                 auth=(self._api_user, self._api_password)
             )
         except requests.exceptions.ConnectionError as e:
             raise LabError(1, f'Could not connect to the API at {self.endpoint}. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: {e}')
+        except requests.exceptions.RequestException as e:
+            raise LabError(1, f'The request to the API at {self.endpoint} failed. If the problem persists, contact us at support@causalchamber.ai or through any of the provided support channels. Error details: {e}')
 
         # Store request roundtime in stats dictionary
         key = f'{method} {url}'
@@ -269,9 +268,13 @@ class API():
         if response.status_code == 200:
             return response
 
-        # Otherwise, parse the error codes            
-        if response.status_code in [400, 401, 403, 409, 422]:
+        # Otherwise, parse the error codes
+        if response.status_code in [400, 401, 402, 403, 409, 422]:
             raise UserError.from_response(response)
+        elif response.status_code == 404 and not_found is not None:
+            error = UserError.from_response(response)
+            error.message = not_found
+            raise error
         else:
             raise LabError.from_response(response)
 
@@ -288,33 +291,7 @@ class API():
         -----
         Standard deviation is only calculated when there are 2 or more calls
         to the same endpoint. For single calls, 'NA' is displayed instead.
-        
-        Examples
-        --------
-        >>> api = API('credentials_example.ini', endpoint='http://localhost:8081')
-        >>> _ = api.make_request('GET', '/health', {})
-        >>> _ = api.make_request('GET', '/health', {})
-        >>> _ = api.make_request('GET', '/health', {})
-        >>> api.make_request('POST', 'v0/sessions', {})
-        Traceback (most recent call last):
-        ...
-        causalchamber.lab.exceptions.UserError: (code 401) ...
-        >>> api.print_timing_stats()
-        Request stats
-        -------------
-        <BLANKLINE>
-        <BLANKLINE>
-                      GET http://localhost:8081/health
-                             total calls: 3
-                        resp. time (avg): ... seconds
-                        resp. time (std): ... seconds
-        <BLANKLINE>
-        <BLANKLINE>
-                      POST http://localhost:8081/v0/sessions
-                             total calls: 1
-                        resp. time (avg): ... seconds
-                        resp. time (std): NA seconds
-        <BLANKLINE>
+
         """
         print("Request stats")
         print("-------------")

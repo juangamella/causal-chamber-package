@@ -54,9 +54,9 @@ def download_and_extract(
     root : string
         The path to the directory on the local computer, where the file will be downloaded and extracted.
     checksum : string or NoneType, default=None
-        The expected MD5 checksum of the downloaded file, which will
-        be checked against its actual checksum. If `None`, the
-        checksum is not checked.
+        The expected checksum of the downloaded file (computed with
+        the given algorithm), which will be checked against its actual
+        checksum. If `None`, the checksum is not checked.
     algorithm : str in ['md5', 'sha256'], optional
         The algorithm used to compute the checksum. Defaults to 'md5'
     verbose : bool, optional
@@ -101,6 +101,9 @@ def _download(url, output_path, verbose):
     """Function to actually download the file from the given URL into the given output_path."""
     print(f'Downloading dataset from "{url}" into "{output_path}"\n') if verbose else None
     response = requests.get(url, stream=True)
+    # Raise an exception for HTTP error codes (e.g., an expired link)
+    # instead of writing the error page to the output file
+    response.raise_for_status()
     total_size_in_bytes = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 Kibibyte
     if verbose:

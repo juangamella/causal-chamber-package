@@ -1,3 +1,21 @@
+v1.0.0rc1, 2026-10-29
+-- The Remote Lab client now uses version 1 of the API (https://api.causalchamber.ai/v1); the default endpoint changed accordingly.
+-- New lab.login() to log in to the Remote Lab, with credentials from a credentials file, a (user, password) tuple, or the environment variables CAUSALCHAMBER_USER and CAUSALCHAMBER_PASSWORD. On login, a dashboard shows your account and credits, the chambers, and your active sessions and experiments.
+-- New Lab.dashboard() prints the dashboard and returns your account details, and Lab.monitor(refresh_rate=5) shows it live (minimum refresh rate: 5 seconds).
+-- New Lab.new_session(chamber_id, config, duration) starts an interactive session and returns a lab.Session; the whole duration is charged upfront and the unused time is refunded when the session is stopped. Sessions can be stopped with Session.stop() or Lab.stop_session(session_id), and used as context managers (with ... as session:) which stop them on exit.
+-- lab.Chamber accepts an optional duration (in seconds) for its session, and has a new wait(milliseconds) method.
+-- New Lab.get_chamber(chamber_id) shows a chamber's state, its configurations (with links to their variable tables), and its queue or active session. Lab.get_queue now does the same.
+-- New Lab.change_chamber_mode(chamber_id, mode) changes the mode of a chamber to 'interactive' or 'queue' (requires the permission to do so).
+-- lab.Protocol is now exported (e.g., for help(lab.Protocol.from_df)).
+-- New Protocol.cost() returns (and prints) the most an experiment can cost in credits, without submitting it.
+-- New Lab.topup() shows the ways to top up your credits, and Lab.get_transactions(fetch_max=10) the latest transactions of your wallet (charges, refunds, top-ups, ...).
+-- Lab.get_experiments now takes fetch_max (default 10) instead of print_max, and prints the experiments in three panels: in flight, queued and finished.
+-- Lab.get_experiment, Lab.cancel_experiment and Lab.get_chamber return the object itself (e.g., the experiment) instead of the raw API response.
+-- Errors for ids that do not exist or do not belong to you (experiments, sessions, chambers) are now raised as UserError (code 404) instead of LabError.
+-- Removed Lab.get_available_chambers() (the chambers are shown in the dashboard).
+-- The printout of lab.Chamber is now a formatted panel (plain text when not in a terminal or notebook).
+-- All output of the Remote Lab client is now formatted with rich (new dependency), replacing termcolor.
+-- Requires Python 3.11 or newer.
 v0.2.8, 2026-04-26
 -- Fixed version number in pyproject.toml
 v0.2.7, 2026-04-26

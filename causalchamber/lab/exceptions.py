@@ -79,14 +79,44 @@ class _BaseError(Exception):
             code (HTTP status code), and message, request_id and
             scheduler_id from the JSON body (if they exist).
 
+        Examples
+        --------
+        >>> def make_response(status_code, body):
+        ...     response = requests.Response()
+        ...     response.status_code = status_code
+        ...     response._content = body
+        ...     return response
+
+        >>> e = UserError.from_response(make_response(422, b'{"message": "Invalid target", "request_id": "r1", "scheduler_id": "s1"}'))
+        >>> e.code, e.message, e.request_id, e.scheduler_id
+        (422, 'Invalid target', 'r1', 's1')
+
+        Bodies without a message, or which are not JSON objects, fall
+        back to the default message of each exception.
+
+        >>> UserError.from_response(make_response(400, b'{"request_id": "r1"}')).message
+        'The API rejected your request but did not provide further details. ...'
+        >>> UserError.from_response(make_response(400, b'["unexpected"]')).message
+        'The API rejected your request but did not provide further details. ...'
+        >>> LabError.from_response(make_response(500, b'"a string"')).message
+        'There was an error on our side. ...'
+        >>> LabError.from_response(make_response(502, b'<html>Bad Gateway</html>')).message
+        'There was an error on our side. ...'
+
+        >>> UserError.from_response("not a response")
+        Traceback (most recent call last):
+            ...
+        TypeError: response must be an instance of requests.Response, not str
         """
         # Check input
         if not isinstance(response, requests.Response):
             raise TypeError(f"response must be an instance of requests.Response, not {type(response).__name__}")
-        # Try to parse json body
+        # Try to parse json body; ignore it if it is not a JSON object
         try:
             params = response.json()
         except Exception:
+            params = {}
+        if not isinstance(params, dict):
             params = {}
         # Build exception
         return cls(code = response.status_code,
@@ -154,3 +184,20 @@ class UserError(_BaseError):
         Unique identifier of the request on the scheduler.
 
     """
+    def __init__(self, code, message, request_id=None, scheduler_id=None):
+        # Set a default message if it is not provided
+        if message is None:
+            message = 'The API rejected your request but did not provide further details. Please check your inputs and try again. If you think this is an error on our side, please contact us at support@causalchamber.ai or through any of the provided support channels.'
+        super().__init__(code, message, request_id, scheduler_id)
+
+
+# ----------------------------------------------------------------------
+# Doctests
+
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod(
+        extraglobs={},
+        verbose=True,
+        optionflags=doctest.ELLIPSIS,
+    )
