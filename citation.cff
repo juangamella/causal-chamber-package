@@ -24,6 +24,17 @@ keywords:
   - root-cause analysis
   - bayesian optimization
   - physical testbed
+  - density estimation
+  - large language models
+  - AI agents
+  - experiment design
+  - anomaly detection
+  - domain generalization
+  - reinforcement learning
+  - robotics
+  - hybrid models
+  - LLM benchmark
+  - AI4Science
 preferred-citation:
   type: article
   title: "Causal chambers as a real-world physical testbed for AI methodology"
