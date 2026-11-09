@@ -11,7 +11,7 @@ The `causalchamber` package provides different functionality for the [Causal Cha
 
 - **[Remote Lab](https://docs.causalchamber.ai)**: a Python interface to run real-time experiments and collect datasets from  our pool of chambers.
 - **[Simulators](#simulators)**: Python simulators and mechanistic models of different chamber phenomena.
-- **[Open-source Datasets](#datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
+- **[Open-source Datasets](#open-source-datasets)**: download existing datasets from the [dataset repository](https://github.com/juangamella/causal-chamber) directly into your Python code.
 - **[Ground truth](#ground-truth)**: load the ground-truth causal graphs and other information for each chamber.
 
 ## Install
@@ -110,14 +110,14 @@ If you encounter a bug, need help using the package, or want to leave us some (h
 
 ## License
 
-The code in this repository is shared under the permissive [MIT license](https://opensource.org/license/mit/). A copy of can be found in [LICENSE.txt](LICENSE.txt).
+The code in this repository is shared under the permissive [MIT license](https://opensource.org/license/mit/). A copy can be found in [LICENSE.txt](LICENSE.txt).
 
 ## Citation
 
 If you use this package for your scientific work, please consider citing:
 
 ```
-﻿@article{gamella2025chamber,
+@article{gamella2025chamber,
   author={Gamella, Juan L. and Peters, Jonas and B{\"u}hlmann, Peter},
   title={Causal chambers as a real-world physical testbed for {AI} methodology},
   journal={Nature Machine Intelligence},
