@@ -11,9 +11,41 @@ authors = [
 description = "Access the datasets, models and Remote Lab from Causal Chamber™."
 readme = "pypi_README.md"
 requires-python = ">=3.11"
+keywords = [
+    "causal inference",
+    "causal discovery",
+    "benchmark",
+    "datasets",
+    "ground truth",
+    "physical systems",
+    "machine learning",
+    "statistics",
+    "physical AI",
+    "simulation-based inference",
+    "foundation models",
+    "world models",
+    "predictive maintenance",
+    "root-cause analysis",
+    "bayesian optimization",
+    "physical testbed",
+    "density estimation",
+    "large language models",
+    "AI agents",
+    "experiment design",
+    "anomaly detection",
+    "domain generalization",
+    "reinforcement learning",
+    "robotics",
+    "hybrid models",
+    "LLM benchmark",
+    "AI4Science",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 license = "MIT"
 dependencies = [
@@ -31,5 +63,8 @@ torch = ["torch", "torchvision"]
 
 [project.urls]
 Homepage = "https://causalchamber.ai"
+Documentation = "https://docs.causalchamber.ai"
+Paper = "https://doi.org/10.1038/s42256-024-00964-x"
+Changelog = "https://github.com/juangamella/causal-chamber-package/blob/main/CHANGES.txt"
 Repository = "https://github.com/juangamella/causal-chamber-package"
 Issues = "https://github.com/juangamella/causal-chamber-package/issues"
