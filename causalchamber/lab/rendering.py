@@ -937,10 +937,14 @@ def _render_topup(payment_links):
     # The names do not wrap; long values (e.g., instructions) do, if
     # the panel is capped at _MIN_WIDTH
     grid = Table.grid(padding=(0, 2))
-    grid.add_column(style=_DIM_STYLE, no_wrap=True)
+    grid.add_column(style=_DIM_STYLE, no_wrap=True, justify="right")
     grid.add_column()
     for name, value in payment_links.items():
+        # A blank line before each way to top up
+        grid.add_row()
         grid.add_row(name, _payment_link(value))
+    # ... and after the last one
+    grid.add_row()
     title = "Top up your credits"
     if len(payment_links) == 0:
         body = Text("No ways to top up your credits are available. Please write us at support@causalchamber.ai.",
