@@ -45,6 +45,7 @@ All timestamps returned by the API are in seconds since the epoch
 # Packages from the standard library
 import io
 import math
+import re
 import time
 from datetime import datetime
 
@@ -937,10 +938,14 @@ def _render_topup(payment_links):
     # The names do not wrap; long values (e.g., instructions) do, if
     # the panel is capped at _MIN_WIDTH
     grid = Table.grid(padding=(0, 2))
-    grid.add_column(style=_DIM_STYLE, no_wrap=True)
+    grid.add_column(style=_DIM_STYLE, no_wrap=True, justify="right")
     grid.add_column()
     for name, value in payment_links.items():
+        # A blank line before each way to top up
+        grid.add_row()
         grid.add_row(name, _payment_link(value))
+    # ... and after the last one
+    grid.add_row()
     title = "Top up your credits"
     if len(payment_links) == 0:
         body = Text("No ways to top up your credits are available. Please write us at support@causalchamber.ai.",
@@ -954,22 +959,28 @@ def _render_topup(payment_links):
 
 def _payment_link(value):
     """
-    Return a way to top up the credits as rich Text: a link if it is
-    a URL, the text as it is otherwise (e.g., instructions).
+    Return a way to top up the credits as rich Text, with any URLs in
+    it (e.g., 'Visit https://...') as clickable links.
 
     Examples
     --------
-    >>> _payment_link('https://pay.example.com/abc').style
-    'link https://pay.example.com/abc'
+    >>> text = _payment_link('Visit https://pay.example.com/abc.')
+    >>> text.plain
+    'Visit https://pay.example.com/abc.'
+    >>> [(text.plain[s.start:s.end], str(s.style)) for s in text.spans]
+    [('https://pay.example.com/abc', 'link https://pay.example.com/abc')]
     >>> text = _payment_link('Please write us at support@causalchamber.ai')
-    >>> text.plain, text.style
-    ('Please write us at support@causalchamber.ai', '')
+    >>> text.plain, text.spans
+    ('Please write us at support@causalchamber.ai', [])
     >>> _payment_link(None).plain
     '—'
     """
-    if isinstance(value, str) and value.startswith(('https://', 'http://')):
-        return Text(value, style=f"link {value}")
-    return _value(value)
+    text = _value(value)
+    # A URL runs until the next whitespace, without trailing
+    # punctuation (e.g., the period ending a sentence)
+    for match in re.finditer(r"https?://\S+?(?=[.,;:!?)]*(\s|$))", text.plain):
+        text.stylize(f"link {match.group()}", match.start(), match.end())
+    return text
 
 
 # --------------------------------------------------------------------

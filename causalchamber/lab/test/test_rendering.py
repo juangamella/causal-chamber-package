@@ -389,7 +389,7 @@ class TopupViewTests(unittest.TestCase):
     def test_payment_links(self):
         links = {'invoice': 'To pay via invoice or through a purchase order from your institution, '
                             'please write us at support@causalchamber.ai',
-                 'card': 'https://pay.example.com/abc'}
+                 'card': 'Visit https://pay.example.com/abc'}
         output = text(rendering._render_topup(links))
         self.assertIn("Top up your credits", output)
         self.assertIn("invoice", output)
@@ -397,13 +397,25 @@ class TopupViewTests(unittest.TestCase):
         # Long instructions wrap instead of being cut
         self.assertNotIn('…', output)
         self.assertIn("support@causalchamber.ai", output)
+        # A blank line (inside the panel) before each way to top up,
+        # and the names are right-aligned
+        lines = output.splitlines()
+        card = next(i for i, line in enumerate(lines) if 'card' in line)
+        invoice = next(i for i, line in enumerate(lines) if 'invoice' in line)
+        self.assertEqual(lines[card - 1].strip(' │'), '')
+        self.assertEqual(lines[invoice - 1].strip(' │'), '')
+        # ... and after the last one (before the bottom border)
+        bottom = next(i for i, line in enumerate(lines) if line.strip().startswith('╰'))
+        self.assertEqual(lines[bottom - 1].strip(' │'), '')
+        self.assertEqual(lines[card].index('card') + len('card'),
+                         lines[invoice].index('invoice') + len('invoice'))
 
     def test_no_payment_links(self):
         self.assertIn("No ways to top up your credits", text(rendering._render_topup({})))
 
     def test_transactions_hint(self):
         self.assertIn(">>> rlab.get_transactions() to see your transactions",
-                      text(rendering._render_topup({'card': 'https://pay.example.com/abc'})))
+                      text(rendering._render_topup({'card': 'Visit https://pay.example.com/abc'})))
 
 
 class TransactionsViewTests(unittest.TestCase):
