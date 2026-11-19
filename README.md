@@ -28,7 +28,7 @@ in an appropriate shell.
 
 You can use our [Remote Lab](https://causalchamber.ai?utm_source=package_github) to collect your own data from the chambers and run experiments in real time.
 
-> See the [documentation](https://docs.causalchamber.ai) for examples.
+> See the [documentation](https://docs.causalchamber.ai/remote-lab/quickstart?utm_source=package_github) for examples.
 
 ## Simulators
 
