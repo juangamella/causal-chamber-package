@@ -389,7 +389,7 @@ class TopupViewTests(unittest.TestCase):
     def test_payment_links(self):
         links = {'invoice': 'To pay via invoice or through a purchase order from your institution, '
                             'please write us at support@causalchamber.ai',
-                 'card': 'https://pay.example.com/abc'}
+                 'card': 'Visit https://pay.example.com/abc'}
         output = text(rendering._render_topup(links))
         self.assertIn("Top up your credits", output)
         self.assertIn("invoice", output)
@@ -415,7 +415,7 @@ class TopupViewTests(unittest.TestCase):
 
     def test_transactions_hint(self):
         self.assertIn(">>> rlab.get_transactions() to see your transactions",
-                      text(rendering._render_topup({'card': 'https://pay.example.com/abc'})))
+                      text(rendering._render_topup({'card': 'Visit https://pay.example.com/abc'})))
 
 
 class TransactionsViewTests(unittest.TestCase):

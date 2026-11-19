@@ -45,6 +45,7 @@ All timestamps returned by the API are in seconds since the epoch
 # Packages from the standard library
 import io
 import math
+import re
 import time
 from datetime import datetime
 
@@ -958,22 +959,28 @@ def _render_topup(payment_links):
 
 def _payment_link(value):
     """
-    Return a way to top up the credits as rich Text: a link if it is
-    a URL, the text as it is otherwise (e.g., instructions).
+    Return a way to top up the credits as rich Text, with any URLs in
+    it (e.g., 'Visit https://...') as clickable links.
 
     Examples
     --------
-    >>> _payment_link('https://pay.example.com/abc').style
-    'link https://pay.example.com/abc'
+    >>> text = _payment_link('Visit https://pay.example.com/abc.')
+    >>> text.plain
+    'Visit https://pay.example.com/abc.'
+    >>> [(text.plain[s.start:s.end], str(s.style)) for s in text.spans]
+    [('https://pay.example.com/abc', 'link https://pay.example.com/abc')]
     >>> text = _payment_link('Please write us at support@causalchamber.ai')
-    >>> text.plain, text.style
-    ('Please write us at support@causalchamber.ai', '')
+    >>> text.plain, text.spans
+    ('Please write us at support@causalchamber.ai', [])
     >>> _payment_link(None).plain
     '—'
     """
-    if isinstance(value, str) and value.startswith(('https://', 'http://')):
-        return Text(value, style=f"link {value}")
-    return _value(value)
+    text = _value(value)
+    # A URL runs until the next whitespace, without trailing
+    # punctuation (e.g., the period ending a sentence)
+    for match in re.finditer(r"https?://\S+?(?=[.,;:!?)]*(\s|$))", text.plain):
+        text.stylize(f"link {match.group()}", match.start(), match.end())
+    return text
 
 
 # --------------------------------------------------------------------
